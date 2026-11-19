@@ -81,6 +81,36 @@
       "releaseUrl": "https://github.com/hariharan-uiux/folioboard/releases/latest"
     },
     {
+      "id": "clack",
+      "name": "Clack",
+      "description": "Real-time mechanical keyboard and mouse click sound synthesizer with customizable audio packs and stereo field positioning.",
+      "icon": "Activity",
+      "category": "Utilities",
+      "tags": [
+        "Audio",
+        "Keyboard",
+        "Mouse",
+        "Sound Effects",
+        "Haptics",
+        "Open Source"
+      ],
+      "version": "1.2.0",
+      "installedVersion": null,
+      "status": "not_installed",
+      "author": "HariHaran",
+      "size": "78 MB",
+      "homepage": "https://github.com/hariharan-uiux/clack-windows",
+      "github": "hariharan-uiux/clack-windows",
+      "installTargets": {
+        "windows": {
+          "type": "exe",
+          "command": "Clack-1.2.0-x64-setup.exe",
+          "downloadUrl": "https://github.com/hariharan-uiux/clack-windows/releases/latest"
+        }
+      },
+      "releaseUrl": "https://github.com/hariharan-uiux/clack-windows/releases/latest"
+    },
+    {
       "id": "pi-metrics",
       "name": "Pi Metrics",
       "description": "Real-time hardware monitoring and telemetry dashboard for Raspberry Pi and Linux systems.",
