@@ -91,4 +91,4 @@ Generates the minified, production-ready desktop bundle in `dist/`.
 
 ## Releases
 
-Versions are tagged `personal-app-launcher-vX.Y.Z` and published from the `Release Please` workflow on every push to `master`.
+Versions are tagged `vault-x-vX.Y.Z` and published from the `Release Please` workflow on every push to `master`.
