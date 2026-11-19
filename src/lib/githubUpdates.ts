@@ -123,3 +123,95 @@ export async function checkAppUpdates(apps: AppItem[]): Promise<{
     updatesFound,
   }
 }
+
+export interface VaultXUpdateInfo {
+  hasUpdate: boolean
+  currentVersion: string
+  latestVersion: string
+  releaseName?: string
+  releaseNotes?: string
+  releaseUrl?: string
+  publishedAt?: string
+  asset?: {
+    name: string
+    size: number
+    downloadUrl: string
+  } | null
+}
+
+/**
+ * Checks for updates to the Vault X desktop application itself via GitHub Releases.
+ */
+export async function checkVaultXUpdate(currentVersion: string = "1.1.1"): Promise<VaultXUpdateInfo> {
+  // If running inside Electron, use the IPC handler first
+  if (window.electronAPI?.checkForLauncherUpdates) {
+    try {
+      const res = await window.electronAPI.checkForLauncherUpdates()
+      if (res && res.ok) {
+        return {
+          hasUpdate: !!res.hasUpdate,
+          currentVersion: res.currentVersion || currentVersion,
+          latestVersion: res.latestVersion || currentVersion,
+          releaseName: res.releaseName,
+          releaseNotes: res.releaseNotes,
+          releaseUrl: res.releaseUrl,
+          publishedAt: res.publishedAt,
+          asset: res.asset || null,
+        }
+      }
+    } catch (e) {
+      console.warn("[VaultX] Electron updater check failed, falling back to direct API:", e)
+    }
+  }
+
+  // Web fallback or direct GitHub fetch
+  try {
+    const res = await fetch("https://api.github.com/repos/hariharan-uiux/Vault-X/releases/latest", {
+      headers: {
+        Accept: "application/vnd.github.v3+json",
+      },
+    })
+
+    if (!res.ok) {
+      return {
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: currentVersion,
+      }
+    }
+
+    const data = await res.json()
+    const rawTag = data.tag_name || ""
+    const latestVersion = rawTag.replace(/^vault-x-v/i, "").replace(/^[vV]/, "").trim()
+    const hasUpdate = compareSemver(latestVersion, currentVersion) > 0
+
+    const assets = data.assets || []
+    const exeAsset = assets.find(
+      (a: any) => typeof a.name === "string" && a.name.endsWith(".exe") && !a.name.includes("blockmap")
+    ) || assets[0]
+
+    return {
+      hasUpdate,
+      currentVersion,
+      latestVersion: latestVersion || currentVersion,
+      releaseName: data.name,
+      releaseNotes: data.body,
+      releaseUrl: data.html_url,
+      publishedAt: data.published_at,
+      asset: exeAsset
+        ? {
+            name: exeAsset.name,
+            size: exeAsset.size,
+            downloadUrl: exeAsset.browser_download_url,
+          }
+        : null,
+    }
+  } catch (err) {
+    console.warn("[VaultX] Failed to check for Vault X updates:", err)
+    return {
+      hasUpdate: false,
+      currentVersion,
+      latestVersion: currentVersion,
+    }
+  }
+}

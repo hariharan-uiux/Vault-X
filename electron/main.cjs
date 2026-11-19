@@ -524,14 +524,217 @@ function setupIpc() {
     return { ok: true, settings: userSettings };
   });
 
+  // Semver comparison helper
+  function compareSemver(a, b) {
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+    const cleanA = a.replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
+    const cleanB = b.replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
+    const partsA = cleanA.split(/[-+]/)[0].split('.').map((n) => parseInt(n, 10) || 0);
+    const partsB = cleanB.split(/[-+]/)[0].split('.').map((n) => parseInt(n, 10) || 0);
+    const len = Math.max(partsA.length, partsB.length, 3);
+    for (let i = 0; i < len; i++) {
+      const numA = partsA[i] ?? 0;
+      const numB = partsB[i] ?? 0;
+      if (numA > numB) return 1;
+      if (numA < numB) return -1;
+    }
+    return 0;
+  }
+
   // Launcher updater check
   ipcMain.handle('updater:check', async () => {
-    return {
-      ok: true,
-      currentVersion: app.getVersion(),
-      latestVersion: app.getVersion(),
-      upToDate: true,
-      message: 'Vault X is up to date',
-    };
+    try {
+      const currentVersion = app.getVersion();
+      const release = await queryGitHubRelease('hariharan-uiux/Vault-X');
+      if (!release || !release.tag_name) {
+        return {
+          ok: true,
+          currentVersion,
+          latestVersion: currentVersion,
+          hasUpdate: false,
+          upToDate: true,
+          message: 'Could not fetch releases from GitHub',
+        };
+      }
+
+      const rawTag = release.tag_name;
+      const latestVersion = rawTag.replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
+      const hasUpdate = compareSemver(latestVersion, currentVersion) > 0;
+
+      let targetAsset = null;
+      const assets = release.assets || [];
+      if (process.platform === 'win32') {
+        targetAsset =
+          assets.find((a) => a.name.endsWith('.exe') && !a.name.includes('blockmap')) ||
+          assets.find((a) => a.name.endsWith('.msi') || a.name.endsWith('.zip'));
+      } else if (process.platform === 'linux') {
+        targetAsset =
+          assets.find((a) => a.name.endsWith('.AppImage') || a.name.endsWith('.appimage')) ||
+          assets.find((a) => a.name.endsWith('.deb') || a.name.endsWith('.tar.gz'));
+      } else if (process.platform === 'darwin') {
+        targetAsset = assets.find((a) => a.name.endsWith('.dmg') || a.name.endsWith('.zip'));
+      }
+
+      return {
+        ok: true,
+        currentVersion,
+        latestVersion,
+        hasUpdate,
+        upToDate: !hasUpdate,
+        releaseName: release.name || `Vault X v${latestVersion}`,
+        releaseNotes: release.body || '',
+        releaseUrl: release.html_url,
+        publishedAt: release.published_at,
+        asset: targetAsset
+          ? {
+              name: targetAsset.name,
+              size: targetAsset.size,
+              downloadUrl: targetAsset.browser_download_url,
+            }
+          : null,
+        message: hasUpdate
+          ? `Vault X v${latestVersion} is available`
+          : `Vault X is up to date (v${currentVersion})`,
+      };
+    } catch (err) {
+      console.error('Error checking Vault X updates:', err);
+      return {
+        ok: false,
+        error: err.message,
+        currentVersion: app.getVersion(),
+        latestVersion: app.getVersion(),
+        hasUpdate: false,
+        upToDate: true,
+      };
+    }
+  });
+
+  // Launcher updater apply (download, install new version, clean up previous version)
+  ipcMain.handle('updater:apply', async (_, updateInfo) => {
+    try {
+      const sendProgress = (progress, statusText, bytesReceived = 0, totalBytes = 0) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('updater:progress', {
+            progress: Math.min(100, Math.max(0, Math.round(progress))),
+            statusText,
+            bytesReceived,
+            totalBytes,
+          });
+        }
+      };
+
+      sendProgress(5, 'Querying latest Vault X release package...');
+
+      let asset = updateInfo?.asset;
+      let targetVersion = updateInfo?.latestVersion;
+
+      if (!asset || !asset.downloadUrl) {
+        const release = await queryGitHubRelease('hariharan-uiux/Vault-X');
+        if (!release) {
+          throw new Error('Unable to connect to GitHub releases.');
+        }
+        targetVersion = (release.tag_name || '').replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
+        const assets = release.assets || [];
+        let matched = null;
+        if (process.platform === 'win32') {
+          matched = assets.find((a) => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
+        } else if (process.platform === 'linux') {
+          matched = assets.find((a) => a.name.endsWith('.AppImage') || a.name.endsWith('.deb') || a.name.endsWith('.tar.gz'));
+        } else if (process.platform === 'darwin') {
+          matched = assets.find((a) => a.name.endsWith('.dmg'));
+        }
+        if (matched) {
+          asset = {
+            name: matched.name,
+            size: matched.size,
+            downloadUrl: matched.browser_download_url,
+          };
+        }
+      }
+
+      if (asset && asset.downloadUrl) {
+        const tempDir = app.getPath('temp');
+        const destFile = path.join(tempDir, asset.name);
+
+        sendProgress(15, `Downloading ${asset.name}...`);
+
+        await downloadFileWithProgress(asset.downloadUrl, destFile, (percent, received, total) => {
+          const mappedProgress = 15 + percent * 0.75;
+          const mbReceived = (received / 1024 / 1024).toFixed(1);
+          const mbTotal = (total / 1024 / 1024).toFixed(1);
+          sendProgress(
+            mappedProgress,
+            `Downloading ${asset.name}: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`,
+            received,
+            total
+          );
+        });
+
+        sendProgress(95, 'Download verified. Launching installer to replace old version...');
+
+        if (process.platform === 'win32') {
+          // Launch Windows NSIS installer which replaces old files in-place and updates shortcuts
+          const installerProcess = spawn(destFile, ['/S'], {
+            detached: true,
+            stdio: 'ignore',
+          });
+          installerProcess.unref();
+
+          sendProgress(100, 'Starting installer. Vault X will now restart with the new version...');
+
+          setTimeout(() => {
+            isQuitting = true;
+            app.quit();
+          }, 1500);
+
+          return { ok: true, message: 'Installer launched. Updating and restarting...' };
+        } else if (process.platform === 'linux') {
+          try {
+            fs.chmodSync(destFile, 0o755);
+          } catch (e) {
+            console.warn('Could not chmod:', e);
+          }
+          if (destFile.endsWith('.AppImage')) {
+            const child = spawn(destFile, [], { detached: true, stdio: 'ignore' });
+            child.unref();
+            setTimeout(() => {
+              isQuitting = true;
+              app.quit();
+            }, 1000);
+            return { ok: true, message: 'Updated version launched. Restarting...' };
+          }
+        }
+        return { ok: true, message: `Update downloaded to ${destFile}` };
+      } else {
+        // Fallback for git-managed or local workspace installations
+        const repoDir = path.resolve(__dirname, '..');
+        const gitDir = path.join(repoDir, '.git');
+        if (fs.existsSync(gitDir)) {
+          sendProgress(40, 'Updating local workspace from GitHub master...');
+          await new Promise((resolve, reject) => {
+            exec('git pull origin master && npm run build', { cwd: repoDir }, (err, stdout, stderr) => {
+              if (err) return reject(new Error(stderr || err.message));
+              resolve(stdout);
+            });
+          });
+          sendProgress(100, 'Vault X updated to latest release. Restarting application...');
+          setTimeout(() => {
+            app.relaunch();
+            app.exit(0);
+          }, 1500);
+          return { ok: true, message: 'Updated to latest release and restarted.' };
+        }
+
+        return {
+          ok: false,
+          error: 'No direct installer asset available for this platform on GitHub.',
+        };
+      }
+    } catch (err) {
+      console.error('Update apply error:', err);
+      return { ok: false, error: err.message };
+    }
   });
 }

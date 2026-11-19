@@ -19,11 +19,19 @@ import {
   RotateCcw,
   ExternalLink,
   Settings,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { AppCard } from "@/components/AppCard"
 import { AppListItem } from "@/components/AppListItem"
 import { ManifestModal } from "@/components/ManifestModal"
@@ -31,7 +39,7 @@ import { AppDetailModal } from "@/components/AppDetailModal"
 import { SettingsModal } from "@/components/SettingsModal"
 import { AppItem, CatalogManifest, ViewMode, StatusFilter, AppStatus } from "@/types/catalog"
 import { LauncherSettings, DEFAULT_LAUNCHER_SETTINGS } from "@/types/settings"
-import { checkAppUpdates } from "@/lib/githubUpdates"
+import { checkAppUpdates, checkVaultXUpdate, VaultXUpdateInfo } from "@/lib/githubUpdates"
 
 const LOCAL_STORAGE_KEY = "app_launcher_custom_catalog"
 const MANIFEST_SOURCE_KEY = "app_launcher_manifest_source"
@@ -53,7 +61,25 @@ declare global {
       getSystemInfo: () => Promise<{ platform: string; arch: string; version: string }>
       getSettings?: () => Promise<{ ok: boolean; settings?: any }>
       saveSettings?: (settings: any) => Promise<{ ok: boolean; settings?: any }>
-      checkForLauncherUpdates?: () => Promise<{ ok: boolean; currentVersion: string; latestVersion: string; upToDate: boolean; message: string }>
+      checkForLauncherUpdates?: () => Promise<{
+        ok: boolean
+        currentVersion: string
+        latestVersion: string
+        hasUpdate: boolean
+        upToDate: boolean
+        message?: string
+        releaseName?: string
+        releaseNotes?: string
+        releaseUrl?: string
+        publishedAt?: string
+        asset?: {
+          name: string
+          size: number
+          downloadUrl: string
+        } | null
+      }>
+      applyLauncherUpdate?: (updateInfo?: any) => Promise<{ ok: boolean; message?: string; error?: string }>
+      onUpdaterProgress?: (callback: (data: { progress: number; bytesReceived?: number; totalBytes?: number; statusText: string }) => void) => () => void
     }
   }
 }
@@ -71,7 +97,13 @@ export default function App() {
   const [launcherSettings, setLauncherSettings] = useState<LauncherSettings>(DEFAULT_LAUNCHER_SETTINGS)
   const [selectedApp, setSelectedApp] = useState<AppItem | null>(null)
   const [systemPlatform, setSystemPlatform] = useState<string>("linux")
+  const [currentAppVersion, setCurrentAppVersion] = useState("1.1.1")
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+  const [launcherUpdate, setLauncherUpdate] = useState<VaultXUpdateInfo | null>(null)
+  const [isUpdatingLauncher, setIsUpdatingLauncher] = useState(false)
+  const [launcherUpdateProgress, setLauncherUpdateProgress] = useState<{ progress: number; statusText: string } | null>(null)
+  const [launcherUpdateDismissed, setLauncherUpdateDismissed] = useState(false)
+  const [showChangelogModal, setShowChangelogModal] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -223,12 +255,46 @@ export default function App() {
     if (window.electronAPI) {
       window.electronAPI.getSystemInfo().then((info) => {
         setSystemPlatform(info.platform === "win32" ? "windows" : "linux")
+        if (info.version) {
+          setCurrentAppVersion(info.version)
+        }
       })
     } else {
       const isWin = navigator.userAgent.toLowerCase().includes("windows")
       setSystemPlatform(isWin ? "windows" : "linux")
     }
   }, [])
+
+  // Check for Vault X app updates
+  const checkVaultX = async (currentVer?: string): Promise<VaultXUpdateInfo | null> => {
+    try {
+      const ver = currentVer || currentAppVersion
+      const update = await checkVaultXUpdate(ver)
+      setLauncherUpdate(update)
+      if (update.hasUpdate) {
+        setLauncherUpdateDismissed(false)
+      }
+      return update
+    } catch (e) {
+      console.warn("[VaultX] Update check error:", e)
+      return null
+    }
+  }
+
+  // Initial update check on mount
+  useEffect(() => {
+    checkVaultX()
+  }, [currentAppVersion])
+
+  // Periodic update check when autoUpdate is enabled
+  useEffect(() => {
+    if (!launcherSettings.autoUpdate) return
+    const intervalMs = launcherSettings.updateFrequency === "daily" ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000
+    const timer = setInterval(() => {
+      checkVaultX()
+    }, intervalMs)
+    return () => clearInterval(timer)
+  }, [launcherSettings.autoUpdate, launcherSettings.updateFrequency, currentAppVersion])
 
   // Listen to real-time install/update progress events from Electron
   useEffect(() => {
@@ -257,6 +323,68 @@ export default function App() {
       return cleanup
     }
   }, [])
+
+  // Listen to Vault X self-update progress
+  useEffect(() => {
+    if (window.electronAPI?.onUpdaterProgress) {
+      const cleanup = window.electronAPI.onUpdaterProgress((data) => {
+        setLauncherUpdateProgress({
+          progress: data.progress,
+          statusText: data.statusText,
+        })
+        if (data.statusText) {
+          showToast(data.statusText, "info")
+        }
+      })
+      return cleanup
+    }
+  }, [])
+
+  // Apply Vault X Update: downloads and automatically replaces previous version
+  const handleApplyLauncherUpdate = async () => {
+    if (!launcherUpdate || !launcherUpdate.hasUpdate) return
+
+    setIsUpdatingLauncher(true)
+    setLauncherUpdateProgress({
+      progress: 5,
+      statusText: `Preparing to update Vault X to v${launcherUpdate.latestVersion}...`,
+    })
+    showToast(`Updating Vault X to v${launcherUpdate.latestVersion}...`, "info")
+
+    if (window.electronAPI?.applyLauncherUpdate) {
+      try {
+        const res = await window.electronAPI.applyLauncherUpdate(launcherUpdate)
+        if (res && !res.ok) {
+          showToast(res.error || "Failed to update Vault X", "error")
+          setIsUpdatingLauncher(false)
+        } else if (res && res.message) {
+          showToast(res.message, "success")
+        }
+      } catch (err: any) {
+        showToast(err.message || "Failed to update Vault X", "error")
+        setIsUpdatingLauncher(false)
+      }
+    } else {
+      // In Web browser mode: trigger direct download of the new installer
+      if (launcherUpdate.asset?.downloadUrl) {
+        showToast(`Downloading ${launcherUpdate.asset.name}...`, "info")
+        const a = document.createElement("a")
+        a.href = launcherUpdate.asset.downloadUrl
+        a.download = launcherUpdate.asset.name
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        setLauncherUpdateProgress({
+          progress: 100,
+          statusText: `Downloaded ${launcherUpdate.asset.name}. Run the installer to replace Vault X with the new version.`,
+        })
+        setTimeout(() => setIsUpdatingLauncher(false), 5000)
+      } else if (launcherUpdate.releaseUrl) {
+        window.open(launcherUpdate.releaseUrl, "_blank")
+        setIsUpdatingLauncher(false)
+      }
+    }
+  }
 
   // Settings update handler
   const handleUpdateSettings = (newSettings: LauncherSettings) => {
@@ -298,11 +426,21 @@ export default function App() {
     }
   }, [apps])
 
-  // Manual trigger to check GitHub Releases API for all catalog apps
+  // Manual trigger to check GitHub Releases API for all catalog apps and Vault X
   const handleCheckAllUpdates = async (): Promise<number> => {
-    if (apps.length === 0) return 0
     setIsCheckingUpdates(true)
-    showToast("Checking GitHub for app updates...", "info")
+    showToast("Checking GitHub for updates...", "info")
+
+    // Check Vault X update
+    const vxUpdate = await checkVaultX()
+    if (vxUpdate?.hasUpdate) {
+      showToast(`Vault X v${vxUpdate.latestVersion} update is available!`, "success")
+    }
+
+    if (apps.length === 0) {
+      setIsCheckingUpdates(false)
+      return vxUpdate?.hasUpdate ? 1 : 0
+    }
 
     try {
       const { updatedApps, updatesFound } = await checkAppUpdates(apps)
@@ -313,10 +451,10 @@ export default function App() {
           `Found ${updatesFound} new app update${updatesFound > 1 ? "s" : ""} on GitHub!`,
           "success"
         )
-      } else {
-        showToast("All catalog apps are up to date with GitHub releases", "success")
+      } else if (!vxUpdate?.hasUpdate) {
+        showToast("Vault X and all catalog apps are up to date", "success")
       }
-      return updatesFound
+      return updatesFound + (vxUpdate?.hasUpdate ? 1 : 0)
     } catch (err: any) {
       showToast(err.message || "Failed to check GitHub releases", "error")
       return 0
@@ -553,6 +691,16 @@ export default function App() {
               <Rocket className="h-4 w-4" />
             </div>
             <span className="font-bold text-sm tracking-tight text-zinc-100">Vault X</span>
+            {launcherUpdate?.hasUpdate && (
+              <button
+                onClick={() => setLauncherUpdateDismissed(false)}
+                className="hidden sm:flex items-center space-x-1.5 px-2 py-0.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono transition-colors"
+                title="Vault X update available! Click to view"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Update v{launcherUpdate.latestVersion}</span>
+              </button>
+            )}
           </div>
 
           {/* Central Search Bar */}
@@ -649,6 +797,80 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Vault X Auto-Update Notification Banner */}
+      {launcherUpdate?.hasUpdate && !launcherUpdateDismissed && (
+        <div className="bg-gradient-to-r from-emerald-950 via-zinc-900 to-emerald-950 border-b border-emerald-600/40 px-4 py-2.5 text-zinc-100 shadow-lg">
+          <div className="w-full max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="flex items-center space-x-3 text-left w-full sm:w-auto">
+              <div className="h-8 w-8 bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 flex-shrink-0">
+                <Sparkles className="h-4 w-4 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-bold text-emerald-300 text-sm tracking-tight">Vault X Update Available</span>
+                  <span className="px-1.5 py-0.5 bg-emerald-900/60 border border-emerald-700/60 text-emerald-300 font-mono text-[10px]">
+                    v{launcherUpdate.latestVersion}
+                  </span>
+                  <span className="text-zinc-400 text-[11px] font-mono hidden md:inline">
+                    (current: v{currentAppVersion})
+                  </span>
+                </div>
+                <p className="text-zinc-300 text-[11px] mt-0.5">
+                  {isUpdatingLauncher && launcherUpdateProgress
+                    ? launcherUpdateProgress.statusText
+                    : "A new release has been published. Click to automatically update and replace the previous version."}
+                </p>
+              </div>
+            </div>
+
+            {/* Action Buttons or Progress Bar */}
+            <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
+              {isUpdatingLauncher ? (
+                <div className="flex items-center space-x-3 w-full sm:w-72 bg-zinc-950/80 p-1.5 border border-emerald-800/60">
+                  <div className="w-full bg-zinc-800 h-2 overflow-hidden">
+                    <div
+                      className="bg-emerald-400 h-full transition-all duration-300"
+                      style={{ width: `${launcherUpdateProgress?.progress || 10}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-emerald-400 text-xs font-bold whitespace-nowrap">
+                    {launcherUpdateProgress?.progress || 10}%
+                  </span>
+                </div>
+              ) : (
+                <>
+                  {launcherUpdate.releaseNotes && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowChangelogModal(true)}
+                      className="text-xs h-8 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 px-2.5 font-mono"
+                    >
+                      Changelog
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleApplyLauncherUpdate}
+                    className="text-xs h-8 bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold px-3.5 shadow-md flex items-center space-x-1.5"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Update to v{launcherUpdate.latestVersion}</span>
+                  </Button>
+                  <button
+                    onClick={() => setLauncherUpdateDismissed(true)}
+                    className="text-zinc-400 hover:text-zinc-200 p-1.5 transition-colors"
+                    title="Dismiss"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="w-full flex-1 bg-zinc-950 flex flex-col py-6 sm:py-8 pb-28 sm:pb-32">
@@ -911,8 +1133,68 @@ export default function App() {
         onUpdateSettings={handleUpdateSettings}
         onResetCatalogOverrides={handleResetCatalogOverrides}
         systemPlatform={systemPlatform}
+        currentVersion={currentAppVersion}
+        launcherUpdate={launcherUpdate}
+        onApplyLauncherUpdate={handleApplyLauncherUpdate}
+        isUpdatingLauncher={isUpdatingLauncher}
+        launcherUpdateProgress={launcherUpdateProgress}
         onCheckAppUpdates={handleCheckAllUpdates}
+        onCheckLauncherUpdates={checkVaultX}
       />
+
+      {/* Changelog Modal */}
+      <Dialog open={showChangelogModal} onOpenChange={setShowChangelogModal}>
+        <DialogContent className="max-w-xl bg-zinc-950 border-zinc-800 text-zinc-100 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-zinc-100 flex items-center space-x-2">
+              <Sparkles className="h-4 w-4 text-emerald-400" />
+              <span>Vault X v{launcherUpdate?.latestVersion} Release Notes</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-400 font-mono">
+              Published on GitHub {launcherUpdate?.publishedAt ? new Date(launcherUpdate.publishedAt).toLocaleDateString() : ""}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="my-4 max-h-72 overflow-y-auto bg-zinc-900/50 p-4 border border-zinc-800 font-mono text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed">
+            {launcherUpdate?.releaseNotes || "No detailed release notes provided."}
+          </div>
+
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+            {launcherUpdate?.releaseUrl ? (
+              <a
+                href={launcherUpdate.releaseUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-zinc-400 hover:text-emerald-400 flex items-center space-x-1"
+              >
+                <span>View on GitHub</span>
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : <div />}
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowChangelogModal(false)}
+                className="text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                Close
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setShowChangelogModal(false)
+                  handleApplyLauncherUpdate()
+                }}
+                className="text-xs bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold"
+              >
+                <Download className="h-3.5 w-3.5 mr-1" />
+                Update to v{launcherUpdate?.latestVersion}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

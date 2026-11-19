@@ -27,6 +27,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { LauncherSettings } from "@/types/settings"
+import { VaultXUpdateInfo } from "@/lib/githubUpdates"
+import { Download } from "lucide-react"
 
 interface SettingsModalProps {
   open: boolean
@@ -35,7 +37,13 @@ interface SettingsModalProps {
   onUpdateSettings: (newSettings: LauncherSettings) => void
   onResetCatalogOverrides: () => void
   systemPlatform: string
+  currentVersion?: string
+  launcherUpdate?: VaultXUpdateInfo | null
+  onApplyLauncherUpdate?: () => void
+  isUpdatingLauncher?: boolean
+  launcherUpdateProgress?: { progress: number; statusText: string } | null
   onCheckAppUpdates?: () => Promise<number>
+  onCheckLauncherUpdates?: () => Promise<any>
 }
 
 export function SettingsModal({
@@ -45,7 +53,13 @@ export function SettingsModal({
   onUpdateSettings,
   onResetCatalogOverrides,
   systemPlatform,
+  currentVersion = "1.1.1",
+  launcherUpdate,
+  onApplyLauncherUpdate,
+  isUpdatingLauncher,
+  launcherUpdateProgress,
   onCheckAppUpdates,
+  onCheckLauncherUpdates,
 }: SettingsModalProps) {
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateStatus, setUpdateStatus] = useState<string | null>(null)
@@ -68,18 +82,32 @@ export function SettingsModal({
     setCheckingUpdate(true)
     setUpdateStatus(null)
 
-    let found = 0
+    let foundApps = 0
+    let launcherHasUpdate = false
+
+    if (onCheckLauncherUpdates) {
+      try {
+        const u = await onCheckLauncherUpdates()
+        if (u?.hasUpdate) {
+          launcherHasUpdate = true
+          setUpdateStatus(`Vault X v${u.latestVersion} update is available!`)
+        }
+      } catch (e) {}
+    }
+
     if (onCheckAppUpdates) {
       try {
-        found = await onCheckAppUpdates()
+        foundApps = await onCheckAppUpdates()
       } catch (e) {}
     }
 
     setCheckingUpdate(false)
-    if (found > 0) {
-      setUpdateStatus(`Checked GitHub: ${found} new app update${found > 1 ? "s" : ""} detected and marked in catalog!`)
+    if (launcherHasUpdate) {
+      // updateStatus already set
+    } else if (foundApps > 0) {
+      setUpdateStatus(`Checked GitHub: ${foundApps} new app update${foundApps > 1 ? "s" : ""} detected and marked in catalog!`)
     } else {
-      setUpdateStatus("Vault X v1.1.0 and all catalog apps are up to date.")
+      setUpdateStatus(`Vault X v${currentVersion} and all catalog apps are up to date.`)
     }
   }
 
@@ -274,35 +302,81 @@ export function SettingsModal({
               </div>
 
               {/* Setting 6: Check for Updates Now button */}
-              <div className="p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-zinc-950/60">
-                <div className="space-y-0.5">
-                  <span className="text-xs font-semibold text-zinc-200">Current Client Release</span>
-                  <p className="text-[11px] font-mono text-zinc-500">
-                    Version 1.0.0 (Production build x64)
-                  </p>
+              <div className="p-4 flex flex-col gap-3 bg-zinc-950/60">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <span className="text-xs font-semibold text-zinc-200">Current Client Release</span>
+                    <p className="text-[11px] font-mono text-zinc-500">
+                      Vault X v{currentVersion} ({systemPlatform === "windows" ? "Windows x64" : "Linux x64"})
+                    </p>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={checkingUpdate || isUpdatingLauncher}
+                      onClick={handleCheckUpdates}
+                      className="text-xs h-8 border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 px-3 font-mono"
+                    >
+                      {checkingUpdate ? (
+                        <>
+                          <RefreshCw className="h-3 w-3 animate-spin mr-1.5" />
+                          Checking...
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck className="h-3.5 w-3.5 mr-1.5 text-zinc-400" />
+                          Check for Updates
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={checkingUpdate}
-                    onClick={handleCheckUpdates}
-                    className="text-xs h-8 border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 px-3 font-mono"
-                  >
-                    {checkingUpdate ? (
-                      <>
-                        <RefreshCw className="h-3 w-3 animate-spin mr-1.5" />
-                        Checking...
-                      </>
+                {/* If Vault X update is available */}
+                {launcherUpdate?.hasUpdate && (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-emerald-200">
+                    <div className="space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-emerald-300">Vault X v{launcherUpdate.latestVersion} Available!</span>
+                        <span className="text-[10px] px-1.5 py-0.2 bg-emerald-900/60 text-emerald-300 border border-emerald-700/60 font-mono">
+                          New Release
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-400">
+                        {isUpdatingLauncher && launcherUpdateProgress
+                          ? launcherUpdateProgress.statusText
+                          : "Click to download and automatically replace with the new version."}
+                      </p>
+                    </div>
+
+                    {isUpdatingLauncher ? (
+                      <div className="flex items-center space-x-2 w-full sm:w-48">
+                        <div className="w-full bg-zinc-800 h-2 rounded overflow-hidden">
+                          <div
+                            className="bg-emerald-400 h-full transition-all duration-300"
+                            style={{ width: `${launcherUpdateProgress?.progress || 10}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-emerald-400 text-[10px]">
+                          {launcherUpdateProgress?.progress || 10}%
+                        </span>
+                      </div>
                     ) : (
-                      <>
-                        <ShieldCheck className="h-3.5 w-3.5 mr-1.5 text-zinc-400" />
-                        Check for Updates
-                      </>
+                      onApplyLauncherUpdate && (
+                        <Button
+                          size="sm"
+                          onClick={onApplyLauncherUpdate}
+                          className="bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold h-8 text-xs px-3 shadow"
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1.5" />
+                          Update to v{launcherUpdate.latestVersion}
+                        </Button>
+                      )
                     )}
-                  </Button>
-                </div>
+                  </div>
+                )}
               </div>
 
               {updateStatus && (

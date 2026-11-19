@@ -18,4 +18,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   saveSettings: (settings) => ipcRenderer.invoke('settings:set', settings),
   checkForLauncherUpdates: () => ipcRenderer.invoke('updater:check'),
+  applyLauncherUpdate: (updateInfo) => ipcRenderer.invoke('updater:apply', updateInfo),
+  onUpdaterProgress: (callback) => {
+    const handler = (_, data) => callback(data);
+    ipcRenderer.on('updater:progress', handler);
+    return () => ipcRenderer.removeListener('updater:progress', handler);
+  },
 });
