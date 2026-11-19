@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.1](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.2.0...vault-x-v1.2.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* quit before running the installer so the update actually replaces the old version
+* reuse the cached installer instead of downloading it again on every click
+* replace the running AppImage in place on Linux updates
+
+
 ## [1.2.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.1.1...vault-x-v1.2.0) (2026-11-19)
 
 

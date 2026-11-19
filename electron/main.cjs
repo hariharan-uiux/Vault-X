@@ -642,7 +642,7 @@ function setupIpc() {
         const assets = release.assets || [];
         let matched = null;
         if (process.platform === 'win32') {
-          matched = assets.find((a) => a.name.endsWith('.exe') && !a.name.includes('blockmap'));
+          matched = pickWindowsAsset(assets);
         } else if (process.platform === 'linux') {
           matched = assets.find((a) => a.name.endsWith('.AppImage') || a.name.endsWith('.deb') || a.name.endsWith('.tar.gz'));
         } else if (process.platform === 'darwin') {
@@ -658,41 +658,62 @@ function setupIpc() {
       }
 
       if (asset && asset.downloadUrl) {
-        const tempDir = app.getPath('temp');
-        const destFile = path.join(tempDir, asset.name);
+        // Cache the installer so a second click does not download 100+ MB again.
+        const cacheDir = path.join(app.getPath('userData'), 'updates');
+        fs.mkdirSync(cacheDir, { recursive: true });
+        const destFile = path.join(cacheDir, asset.name);
+        const expectedSize = Number(asset.size) || 0;
+        const cachedSize = fs.existsSync(destFile) ? fs.statSync(destFile).size : 0;
+        const isCached = cachedSize > 1024 * 1024 && (!expectedSize || cachedSize === expectedSize);
 
-        sendProgress(15, `Downloading ${asset.name}...`);
+        if (isCached) {
+          sendProgress(85, `Reusing the installer downloaded earlier (${asset.name}).`);
+        } else {
+          if (cachedSize) {
+            try { fs.rmSync(destFile, { force: true }); } catch {}
+          }
+          sendProgress(15, `Downloading ${asset.name}...`);
+          await downloadFileWithProgress(asset.downloadUrl, destFile, (percent, received, total) => {
+            const mappedProgress = 15 + percent * 0.75;
+            const mbReceived = (received / 1024 / 1024).toFixed(1);
+            const mbTotal = (total / 1024 / 1024).toFixed(1);
+            sendProgress(
+              mappedProgress,
+              `Downloading ${asset.name}: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`,
+              received,
+              total
+            );
+          });
+          const downloadedSize = fs.existsSync(destFile) ? fs.statSync(destFile).size : 0;
+          if (downloadedSize < 1024 * 1024) {
+            throw new Error('The downloaded installer is incomplete. Please try again.');
+          }
+        }
 
-        await downloadFileWithProgress(asset.downloadUrl, destFile, (percent, received, total) => {
-          const mappedProgress = 15 + percent * 0.75;
-          const mbReceived = (received / 1024 / 1024).toFixed(1);
-          const mbTotal = (total / 1024 / 1024).toFixed(1);
-          sendProgress(
-            mappedProgress,
-            `Downloading ${asset.name}: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`,
-            received,
-            total
-          );
-        });
-
-        sendProgress(95, 'Download verified. Launching installer to replace old version...');
+        sendProgress(95, 'Installer ready. Closing Vault X to apply the update...');
 
         if (process.platform === 'win32') {
-          // Launch Windows NSIS installer which replaces old files in-place and updates shortcuts
-          const installerProcess = spawn(destFile, ['/S'], {
-            detached: true,
-            stdio: 'ignore',
-          });
-          installerProcess.unref();
+          if (!app.isPackaged) {
+            return {
+              ok: false,
+              error: `Installer ready at ${destFile}. Close Vault X and run it manually to update this development build.`,
+            };
+          }
+          // Quit BEFORE the silent installer runs: a running app keeps its files locked,
+          // which made the installer do nothing and the old version reappear.
+          isQuitting = true;
+          const quoted = destFile.replace(/"/g, '""');
+          const launcher = spawn(
+            'cmd.exe',
+            ['/c', `ping 127.0.0.1 -n 4 > nul & start "" "${quoted}" /S --updated`],
+            { detached: true, stdio: 'ignore', windowsHide: true }
+          );
+          launcher.on('error', (e) => console.error('Failed to start the installer:', e));
+          launcher.unref();
 
-          sendProgress(100, 'Starting installer. Vault X will now restart with the new version...');
-
-          setTimeout(() => {
-            isQuitting = true;
-            app.quit();
-          }, 1500);
-
-          return { ok: true, message: 'Installer launched. Updating and restarting...' };
+          sendProgress(100, 'Installing the update. Vault X will reopen automatically...');
+          setTimeout(() => app.exit(0), 800);
+          return { ok: true, message: 'Installing the update. Vault X will reopen automatically...' };
         } else if (process.platform === 'linux') {
           try {
             fs.chmodSync(destFile, 0o755);
@@ -700,13 +721,21 @@ function setupIpc() {
             console.warn('Could not chmod:', e);
           }
           if (destFile.endsWith('.AppImage')) {
-            const child = spawn(destFile, [], { detached: true, stdio: 'ignore' });
+            // Replace the running AppImage so the new version actually sticks.
+            const runningImage = process.env.APPIMAGE;
+            if (runningImage && fs.existsSync(runningImage)) {
+              try {
+                fs.copyFileSync(destFile, runningImage);
+                fs.chmodSync(runningImage, 0o755);
+              } catch (e) {
+                console.warn('Could not replace the AppImage in place:', e);
+              }
+            }
+            const child = spawn(runningImage || destFile, [], { detached: true, stdio: 'ignore' });
             child.unref();
-            setTimeout(() => {
-              isQuitting = true;
-              app.quit();
-            }, 1000);
-            return { ok: true, message: 'Updated version launched. Restarting...' };
+            isQuitting = true;
+            setTimeout(() => app.exit(0), 800);
+            return { ok: true, message: 'Updated Vault X. Restarting...' };
           }
         }
         return { ok: true, message: `Update downloaded to ${destFile}` };
