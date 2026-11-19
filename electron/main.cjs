@@ -282,6 +282,13 @@ function setupIpc() {
     }
   });
 
+  // Prefer a real installer over a portable build when a release ships both.
+  function pickWindowsAsset(assets) {
+    const exes = (assets || []).filter((a) => /\.exe$/i.test(a.name) && !a.name.includes('blockmap'));
+    return exes.find((a) => /setup|install/i.test(a.name)) || exes[0] ||
+      (assets || []).find((a) => a.name.endsWith('.msi') || a.name.endsWith('.zip'));
+  }
+
   // Handle install / update logic
   async function performInstall(appItem, actionName = 'installing') {
     const appId = appItem.id || 'relay';
@@ -316,9 +323,7 @@ function setupIpc() {
           assets.find((a) => a.name.endsWith('.AppImage') || a.name.endsWith('.appimage')) ||
           assets.find((a) => a.name.endsWith('.deb') || a.name.endsWith('.tar.gz'));
       } else if (process.platform === 'win32') {
-        targetAsset =
-          assets.find((a) => a.name.endsWith('.exe') && !a.name.includes('blockmap')) ||
-          assets.find((a) => a.name.endsWith('.msi') || a.name.endsWith('.zip'));
+        targetAsset = pickWindowsAsset(assets);
       } else if (process.platform === 'darwin') {
         targetAsset = assets.find((a) => a.name.endsWith('.dmg') || a.name.endsWith('.zip'));
       }
@@ -566,9 +571,7 @@ function setupIpc() {
       let targetAsset = null;
       const assets = release.assets || [];
       if (process.platform === 'win32') {
-        targetAsset =
-          assets.find((a) => a.name.endsWith('.exe') && !a.name.includes('blockmap')) ||
-          assets.find((a) => a.name.endsWith('.msi') || a.name.endsWith('.zip'));
+        targetAsset = pickWindowsAsset(assets);
       } else if (process.platform === 'linux') {
         targetAsset =
           assets.find((a) => a.name.endsWith('.AppImage') || a.name.endsWith('.appimage')) ||

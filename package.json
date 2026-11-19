@@ -1,6 +1,6 @@
 {
   "name": "vault-x",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Vault X — ultra-lightweight personal cross-platform desktop app launcher with shadcn/ui",
   "main": "electron/main.cjs",
   "type": "module",

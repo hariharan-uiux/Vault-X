@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.1.1...vault-x-v1.2.0) (2026-11-19)
+
+
+### Features
+
+* add FolioBoard and Relay as installable desktop apps with auto-update tracking
+* prefer the full installer over a portable build when a release ships both
+
+
 ## [1.1.1](https://github.com/hariharan-uiux/Vault-X/compare/personal-app-launcher-v1.1.0...vault-x-v1.1.1) (2026-11-19)
 
 
