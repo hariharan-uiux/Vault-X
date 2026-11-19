@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.1](https://github.com/hariharan-uiux/Vault-X/compare/personal-app-launcher-v1.1.0...personal-app-launcher-v1.1.1) (2026-11-19)
+
+
+### Documentation
+
+* note the release tag convention ([99929d1](https://github.com/hariharan-uiux/Vault-X/commit/99929d1fb86b74a67b75eb2f9ea066580deb03b2))
+
+
+### Code Refactoring
+
+* rename app to Vault X ([47995da](https://github.com/hariharan-uiux/Vault-X/commit/47995da6727e5badad0221e362cdbfe4086590d9))
+
 ## [1.1.0](https://github.com/hariharan-uiux/app-launcher/compare/personal-app-launcher-v1.0.0...personal-app-launcher-v1.1.0) (2026-11-11)
 
 
