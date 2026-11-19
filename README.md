@@ -1,4 +1,4 @@
-# 🚀 App Launcher
+# 🚀 Vault X
 
 An ultra-lightweight, personal cross-platform desktop application launcher and catalog manager built with **shadcn/ui (Zinc theme)**, **React**, **Vite**, **Tailwind CSS**, and **Electron**.
 
@@ -37,7 +37,7 @@ Designed for minimal CPU & RAM footprint (~38MB idle memory) and sub-120ms insta
 ## Project Structure
 
 ```
-app-launcher/
+Vault-X/
 ├── electron/
 │   ├── main.cjs               # Ultra-lightweight Electron main process
 │   └── preload.cjs            # Secure context-isolated IPC bridge
@@ -57,7 +57,7 @@ app-launcher/
 │   │   └── utils.ts           # shadcn cn() utility
 │   ├── types/
 │   │   └── catalog.ts         # TypeScript schema definitions
-│   ├── App.tsx                # Main App Launcher application
+│   ├── App.tsx                # Main Vault X application
 │   ├── main.tsx               # React entrypoint
 │   └── index.css              # Tailwind CSS directives & zinc design tokens
 ├── tailwind.config.js         # Tailwind theme configuration
@@ -72,7 +72,7 @@ app-launcher/
 
 ### 1. Web / Development Mode
 ```bash
-cd /home/hari/OpenBot/Shared/projects/app-launcher
+cd /home/hari/OpenBot/Shared/projects/Vault-X
 npm run dev
 ```
 Runs the Vite development server with hot-module reloading at `http://localhost:3300`.

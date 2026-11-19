@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "AppLauncherCatalog",
-  "description": "Schema definition for App Launcher remote and local catalog manifests",
+  "title": "VaultXCatalog",
+  "description": "Schema definition for Vault X remote and local catalog manifests",
   "type": "object",
   "required": ["version", "updatedAt", "categories", "apps"],
   "properties": {

@@ -27,7 +27,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 560,
     backgroundColor: '#09090b',
-    title: 'App Launcher',
+    title: 'Vault X',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -149,7 +149,7 @@ function downloadFileWithProgress(url, destPath, onProgress) {
         currentUrl,
         {
           headers: {
-            'User-Agent': 'App-Launcher/1.0.0',
+            'User-Agent': 'Vault-X/1.1.0',
             Accept: 'application/octet-stream, */*',
           },
         },
@@ -212,7 +212,7 @@ async function queryGitHubRelease(githubRepo) {
       url,
       {
         headers: {
-          'User-Agent': 'App-Launcher/1.0.0',
+          'User-Agent': 'Vault-X/1.1.0',
           Accept: 'application/vnd.github.v3+json',
         },
       },
@@ -531,7 +531,7 @@ function setupIpc() {
       currentVersion: app.getVersion(),
       latestVersion: app.getVersion(),
       upToDate: true,
-      message: 'App Launcher is up to date',
+      message: 'Vault X is up to date',
     };
   });
 }

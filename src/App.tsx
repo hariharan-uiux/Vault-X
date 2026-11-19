@@ -552,7 +552,7 @@ export default function App() {
             <div className="h-8 w-8 bg-zinc-100 text-zinc-950 flex items-center justify-center font-bold shadow">
               <Rocket className="h-4 w-4" />
             </div>
-            <span className="font-bold text-sm tracking-tight text-zinc-100">AppLauncher</span>
+            <span className="font-bold text-sm tracking-tight text-zinc-100">Vault X</span>
           </div>
 
           {/* Central Search Bar */}

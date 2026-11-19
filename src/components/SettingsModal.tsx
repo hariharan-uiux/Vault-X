@@ -79,7 +79,7 @@ export function SettingsModal({
     if (found > 0) {
       setUpdateStatus(`Checked GitHub: ${found} new app update${found > 1 ? "s" : ""} detected and marked in catalog!`)
     } else {
-      setUpdateStatus("App Launcher v1.0.0 and all catalog apps are up to date.")
+      setUpdateStatus("Vault X v1.1.0 and all catalog apps are up to date.")
     }
   }
 
@@ -137,7 +137,7 @@ export function SettingsModal({
                     )}
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed max-w-lg">
-                    When enabled, closing the window keeps App Launcher running silently in the background
+                    When enabled, closing the window keeps Vault X running silently in the background
                     so apps launch instantly and status stays synchronized.
                   </p>
                 </div>
@@ -155,7 +155,7 @@ export function SettingsModal({
                     Minimize to System Tray
                   </span>
                   <p className="text-xs text-zinc-400 leading-relaxed max-w-lg">
-                    Send App Launcher to the notification tray area when minimized or closed instead of
+                    Send Vault X to the notification tray area when minimized or closed instead of
                     cluttering your taskbar.
                   </p>
                 </div>
@@ -209,7 +209,7 @@ export function SettingsModal({
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
                     <span className="text-xs sm:text-sm font-semibold text-zinc-100">
-                      Auto-Update App Launcher
+                      Auto-Update Vault X
                     </span>
                     {settings.autoUpdate && (
                       <span className="text-[10px] px-1.5 py-0.2 bg-emerald-950 text-emerald-400 border border-emerald-800/60 font-mono">
@@ -218,7 +218,7 @@ export function SettingsModal({
                     )}
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed max-w-lg">
-                    Automatically download and install new releases of App Launcher in the background. You
+                    Automatically download and install new releases of Vault X in the background. You
                     will be notified when updates are ready without disruption.
                   </p>
                 </div>
