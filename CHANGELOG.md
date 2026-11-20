@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.5.0...vault-x-v1.5.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **uninstall:** reliably run native uninstaller, remove shortcuts, and clean files ([41c07c1](https://github.com/hariharan-uiux/Vault-X/commit/41c07c1e31d6f3456697e84ac0c3c7784a35632b))
+
 ## [1.5.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.4.2...vault-x-v1.5.0) (2026-11-20)
 
 
