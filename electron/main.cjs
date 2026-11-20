@@ -1205,25 +1205,35 @@ function setupIpc() {
   });
 
   ipcMain.handle('repos:add', async (_, input) => {
-    const fullName = normalizeRepoInput(input);
-    if (!fullName) {
-      return { ok: false, error: 'That does not look like a GitHub repository link.' };
+    let app = null;
+
+    if (input && typeof input === 'object' && input.id) {
+      app = input;
+    } else {
+      const fullName = normalizeRepoInput(input);
+      if (!fullName) {
+        return { ok: false, error: 'That does not look like a GitHub repository link.' };
+      }
+
+      const [repoInfo, releases] = await Promise.all([
+        githubJson(`https://api.github.com/repos/${fullName}`),
+        queryGitHubReleases(fullName),
+      ]);
+
+      if (!repoInfo && !releases.length) {
+        return { ok: false, error: `Could not read ${fullName} from GitHub.` };
+      }
+
+      const published = releases.filter((r) => !r.draft);
+      const latest = published.find((r) => !r.prerelease) || published[0] || null;
+      app = buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
     }
 
-    const [repoInfo, releases] = await Promise.all([
-      githubJson(`https://api.github.com/repos/${fullName}`),
-      queryGitHubReleases(fullName),
-    ]);
-
-    if (!repoInfo && !releases.length) {
-      return { ok: false, error: `Could not read ${fullName} from GitHub.` };
+    if (!app || !app.id) {
+      return { ok: false, error: 'Could not create application entry.' };
     }
 
-    const published = releases.filter((r) => !r.draft);
-    const latest = published.find((r) => !r.prerelease) || published[0] || null;
-    const app = buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
-
-    const list = readCustomApps().filter((a) => a.github !== app.github);
+    const list = readCustomApps().filter((a) => a.id !== app.id && a.github !== app.github);
     list.push(app);
     if (!saveCustomApps(list)) {
       return { ok: false, error: 'Could not save the repository list.' };

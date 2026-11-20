@@ -97,7 +97,7 @@ declare global {
         }>
         error?: string
       }>
-      addRepo?: (input: string) => Promise<{ ok: boolean; app?: AppItem; apps?: AppItem[]; error?: string }>
+      addRepo?: (input: string | AppItem) => Promise<{ ok: boolean; app?: AppItem; apps?: AppItem[]; error?: string }>
       removeRepo?: (appId: string) => Promise<{ ok: boolean; apps?: AppItem[]; error?: string }>
     }
   }
@@ -107,8 +107,12 @@ const ADDED_REPOS_KEY = "vaultx_added_repos"
 
 /** User-added repos come from the local store; the catalog comes from apps.json. */
 function mergeCustomApps(base: AppItem[], custom: AppItem[]): AppItem[] {
-  const known = new Set(base.map((a) => a.id))
-  return [...base, ...custom.filter((a) => a && a.id && !known.has(a.id))]
+  const knownIds = new Set(base.map((a) => a.id))
+  const knownGithub = new Set(base.map((a) => a.github?.toLowerCase()).filter(Boolean))
+  return [
+    ...base,
+    ...custom.filter((a) => a && a.id && !knownIds.has(a.id) && (!a.github || !knownGithub.has(a.github.toLowerCase()))),
+  ]
 }
 
 function applyInstalledState(
@@ -127,16 +131,26 @@ function applyInstalledState(
 }
 
 async function loadCustomApps(): Promise<AppItem[]> {
+  let electronApps: AppItem[] = []
   if (window.electronAPI?.listRepos) {
-    const res = await window.electronAPI.listRepos()
-    if (res.ok && Array.isArray(res.apps)) return res.apps
+    try {
+      const res = await window.electronAPI.listRepos()
+      if (res?.ok && Array.isArray(res.apps)) {
+        electronApps = res.apps
+      }
+    } catch (e) {
+      console.warn("Failed to read repos from electron:", e)
+    }
   }
+
+  let localApps: AppItem[] = []
   try {
     const saved = JSON.parse(localStorage.getItem(ADDED_REPOS_KEY) || "[]")
-    return Array.isArray(saved) ? saved : []
-  } catch {
-    return []
-  }
+    if (Array.isArray(saved)) localApps = saved
+  } catch {}
+
+  // Merge both sources so an app saved in either location is preserved
+  return mergeCustomApps(electronApps, localApps)
 }
 
 export default function App() {
@@ -198,7 +212,7 @@ export default function App() {
   // Load manifest initially
   const loadManifestFromSource = async (source: string, type: "default" | "local" | "remote"): Promise<boolean> => {
     try {
-      let data: CatalogManifest
+      let data: CatalogManifest | null = null
 
       if (window.electronAPI && type === "local") {
         const res = await window.electronAPI.readLocalCatalog(source)
@@ -209,12 +223,22 @@ export default function App() {
         if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch remote manifest`)
         data = await res.json()
       } else {
-        const res = await fetch("/apps.json")
-        if (!res.ok) throw new Error("Could not load default catalog")
-        data = await res.json()
+        if (window.electronAPI?.readLocalCatalog) {
+          try {
+            const res = await window.electronAPI.readLocalCatalog()
+            if (res.ok && res.data) {
+              data = res.data
+            }
+          } catch {}
+        }
+        if (!data) {
+          const res = await fetch("./apps.json")
+          if (!res.ok) throw new Error("Could not load default catalog")
+          data = await res.json()
+        }
       }
 
-      if (!data.apps || !Array.isArray(data.apps)) {
+      if (!data || !data.apps || !Array.isArray(data.apps)) {
         throw new Error("Invalid manifest schema: missing apps array")
       }
 
@@ -697,26 +721,32 @@ export default function App() {
   // Add a GitHub repository the user pasted
   const handleAddRepo = async (app: AppItem) => {
     setApps((prev) => mergeCustomApps(prev, [app]))
-    if (!window.electronAPI?.listRepos) {
-      // Browser fallback: keep the list in localStorage
-      const current = await loadCustomApps()
-      const next = [...current.filter((a) => a.github !== app.github), app]
-      localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(next))
-    }
-    showToast(`${app.name} added. Click Install to get v${app.version}.`, "success")
+    // Always persist to localStorage so it survives across restarts and in browser
+    try {
+      const saved = JSON.parse(localStorage.getItem(ADDED_REPOS_KEY) || "[]")
+      const updated = [
+        ...(Array.isArray(saved) ? saved : []).filter((a: AppItem) => a.id !== app.id && a.github !== app.github),
+        app,
+      ]
+      localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(updated))
+    } catch {}
+
+    showToast(`${app.name} added to catalog! Click Install to get v${app.version}.`, "success")
   }
 
   const handleRemoveRepo = async (appId: string) => {
     if (window.electronAPI?.removeRepo) {
-      const res = await window.electronAPI.removeRepo(appId)
-      if (!res.ok) {
-        showToast(res.error || "Could not remove that repository", "error")
-        return
-      }
-    } else {
-      const current = await loadCustomApps()
-      localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(current.filter((a) => a.id !== appId)))
+      try {
+        await window.electronAPI.removeRepo(appId)
+      } catch {}
     }
+    try {
+      const saved = JSON.parse(localStorage.getItem(ADDED_REPOS_KEY) || "[]")
+      if (Array.isArray(saved)) {
+        localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(saved.filter((a: AppItem) => a.id !== appId)))
+      }
+    } catch {}
+
     setApps((prev) => prev.filter((a) => a.id !== appId))
     showToast("Repository removed from Vault X", "info")
   }

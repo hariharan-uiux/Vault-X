@@ -148,12 +148,12 @@ export function AddRepoModal({ open, onOpenChange, onAddRepo, onRemoveRepo, onIn
 
     try {
       if (window.electronAPI?.addRepo) {
-        const res = await window.electronAPI.addRepo(urlInput)
-        if (!res.ok || !res.app) {
+        const res = await window.electronAPI.addRepo(preview.app)
+        if (!res.ok) {
           setErrorMsg(res.error || "Could not add that repository.")
           return
         }
-        onAddRepo(res.app as AppItem)
+        onAddRepo((res.app || preview.app) as AppItem)
       } else {
         onAddRepo(preview.app)
       }
@@ -161,6 +161,7 @@ export function AddRepoModal({ open, onOpenChange, onAddRepo, onRemoveRepo, onIn
       await refreshAdded()
       setPreview(null)
       setUrlInput("")
+      onOpenChange(false)
     } catch (err: any) {
       setErrorMsg(err.message || "Could not add that repository.")
     } finally {
