@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.5.1...vault-x-v1.6.0) (2026-11-20)
+
+### Features
+
+* **ui:** contextual empty states with direct 'Add App from GitHub' action ([341466e](https://github.com/hariharan-uiux/Vault-X/commit/341466ea6d82006764ca4b341c2c31e786b24017))
+* **header:** sleek icon-only buttons for toolbar actions ([cf529d0](https://github.com/hariharan-uiux/Vault-X/commit/cf529d08e8b159f815b3c586113b2cf2759e9bf9))
+
+### Bug Fixes
+
+* **persistence:** persist user-added GitHub apps across restarts in both electron store and local storage ([5c57295](https://github.com/hariharan-uiux/Vault-X/commit/5c57295a4687d6052f992e59173eb56b940989db))
+* **progress:** eliminate download progress notification blinking and display clean app name ([cf87d45](https://github.com/hariharan-uiux/Vault-X/commit/cf87d45f3c9598a6344d3264d8ad4422e57eeff0))
+* **ci:** disable automated release PRs and trigger releases only on explicit tags ([ad3d160](https://github.com/hariharan-uiux/Vault-X/commit/ad3d1605f6e52003c4075f917b07f8728a2a514d))
+
 ## [1.5.1](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.5.0...vault-x-v1.5.1) (2026-11-20)
 
 
