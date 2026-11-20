@@ -181,12 +181,18 @@ export default function App() {
   // Busy states for ongoing install / update simulations
   const [busyState, setBusyState] = useState<Record<string, { action: string; progress: number }>>({})
   const [toastMessage, setToastMessage] = useState<{ text: string; type: "info" | "success" | "error" } | null>(null)
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const showToast = (text: string, type: "info" | "success" | "error" = "info") => {
+  const showToast = (text: string, type: "info" | "success" | "error" = "info", duration = 3000) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current)
+    }
     setToastMessage({ text, type })
-    setTimeout(() => {
-      setToastMessage(null)
-    }, 3000)
+    if (duration > 0) {
+      toastTimeoutRef.current = setTimeout(() => {
+        setToastMessage(null)
+      }, duration)
+    }
   }
 
   // Load manifest initially
@@ -373,7 +379,7 @@ export default function App() {
           },
         }))
         if (data.statusText) {
-          showToast(data.statusText, "info")
+          showToast(data.statusText, "info", data.progress >= 100 ? 3000 : 8000)
         }
         if (data.progress >= 100) {
           setTimeout(() => {
@@ -398,7 +404,7 @@ export default function App() {
           statusText: data.statusText,
         })
         if (data.statusText) {
-          showToast(data.statusText, "info")
+          showToast(data.statusText, "info", data.progress >= 100 ? 3000 : 8000)
         }
       })
       return cleanup
@@ -762,9 +768,9 @@ export default function App() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-zinc-800 selection:text-zinc-100">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-5 right-5 z-50 pointer-events-none">
           <div
-            className={`px-4 py-2.5 border text-xs font-medium shadow-xl flex items-center space-x-2 ${
+            className={`px-4 py-2.5 border text-xs font-medium shadow-xl flex items-center space-x-2 transition-colors duration-150 ${
               toastMessage.type === "success"
                 ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-200"
                 : toastMessage.type === "error"

@@ -198,13 +198,21 @@ function downloadFileWithProgress(url, destPath, onProgress) {
 
           const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
           let receivedBytes = 0;
+          let lastProgressTime = 0;
+          let lastReportedPercent = -1;
 
           res.on('data', (chunk) => {
             receivedBytes += chunk.length;
             file.write(chunk);
             if (totalBytes > 0 && onProgress) {
+              const now = Date.now();
               const percent = (receivedBytes / totalBytes) * 100;
-              onProgress(percent, receivedBytes, totalBytes);
+              // Throttle IPC events to at most once every 80ms or on whole percent changes
+              if (now - lastProgressTime >= 80 || receivedBytes >= totalBytes || Math.floor(percent) > lastReportedPercent) {
+                lastProgressTime = now;
+                lastReportedPercent = Math.floor(percent);
+                onProgress(percent, receivedBytes, totalBytes);
+              }
             }
           });
 
@@ -817,7 +825,7 @@ function setupIpc() {
     let installed = null;
 
     if (targetAsset && targetAsset.browser_download_url) {
-      sendProgress(15, `Downloading ${targetAsset.name} from GitHub...`);
+      sendProgress(15, `Downloading ${appItem.name}...`);
       const destFile = path.join(appDir, targetAsset.name);
 
       await downloadFileWithProgress(
@@ -829,7 +837,7 @@ function setupIpc() {
           const mbTotal = (total / 1024 / 1024).toFixed(1);
           sendProgress(
             mappedProgress,
-            `Downloading ${targetAsset.name}: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`
+            `Downloading ${appItem.name}: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`
           );
         }
       );
@@ -1413,14 +1421,14 @@ function setupIpc() {
           if (cachedSize) {
             try { fs.rmSync(destFile, { force: true }); } catch {}
           }
-          sendProgress(15, `Downloading ${asset.name}...`);
+          sendProgress(15, `Downloading Vault X...`);
           await downloadFileWithProgress(asset.downloadUrl, destFile, (percent, received, total) => {
             const mappedProgress = 15 + percent * 0.75;
             const mbReceived = (received / 1024 / 1024).toFixed(1);
             const mbTotal = (total / 1024 / 1024).toFixed(1);
             sendProgress(
               mappedProgress,
-              `Downloading ${asset.name}: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`,
+              `Downloading Vault X: ${mbReceived}MB / ${mbTotal}MB (${Math.round(percent)}%)`,
               received,
               total
             );
