@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.4.2...vault-x-v1.5.0) (2026-11-20)
+
+
+### Features
+
+* **install:** download and launch setup wizard on screen, removing uninstaller call ([cff1d48](https://github.com/hariharan-uiux/Vault-X/commit/cff1d4891b28e743f947005587d80e31cd6c950e))
+
 ## [1.4.2](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.4.1...vault-x-v1.4.2) (2026-11-20)
 
 
