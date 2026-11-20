@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.2.1...vault-x-v1.3.0) (2026-11-19)
+
+
+### Features
+
+* **catalog:** add Clack Windows app with exe installer to catalog ([e750f34](https://github.com/hariharan-uiux/Vault-X/commit/e750f34b56433ebf3ad04d819227cad687501f29))
+
 ## [1.2.1](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.2.0...vault-x-v1.2.1) (2026-11-19)
 
 
