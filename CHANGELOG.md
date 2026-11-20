@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.4.0...vault-x-v1.4.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **window:** remove default application menu bar (File, Edit, View, Window) ([5e25a20](https://github.com/hariharan-uiux/Vault-X/commit/5e25a2014b0787e7eeef372971a65ab22b80057d))
+
 ## [1.4.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.3.0...vault-x-v1.4.0) (2026-11-20)
 
 
