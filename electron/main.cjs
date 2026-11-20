@@ -387,28 +387,29 @@ function buildAppFromRepo(repoInfo, release) {
 
 // ---------- Windows install helpers ----------
 
-function runProcess(file, args, timeoutMs = 10 * 60 * 1000) {
-  return new Promise((resolve, reject) => {
+function runProcess(file, args, timeoutMs = 10 * 60 * 1000, hideWindow = false) {
+  return new Promise((resolve) => {
     let settled = false;
-    const child = spawn(file, args, { stdio: 'ignore', windowsHide: true });
+    const child = spawn(file, args, { stdio: 'ignore', windowsHide: hideWindow });
     const timer = setTimeout(() => {
       if (settled) return;
       settled = true;
       try { child.kill(); } catch {}
-      reject(new Error(`${file} did not finish within ${Math.round(timeoutMs / 60000)} minutes`));
+      resolve(-1);
     }, timeoutMs);
 
     child.on('error', (err) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      reject(err);
+      console.warn(`[runProcess] Failed to execute ${file}:`, err.message);
+      resolve(-1);
     });
     child.on('exit', (code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(code);
+      resolve(typeof code === 'number' ? code : 0);
     });
   });
 }
@@ -524,28 +525,168 @@ function resolveEntryExecutable(entry, appName) {
   return null;
 }
 
+function findShortcutTarget(appName) {
+  if (process.platform !== 'win32') return null;
+  const roots = [
+    process.env.APPDATA && path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    process.env.PROGRAMDATA && path.join(process.env.PROGRAMDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    process.env.USERPROFILE && path.join(process.env.USERPROFILE, 'Desktop'),
+    process.env.PUBLIC && path.join(process.env.PUBLIC, 'Desktop'),
+  ].filter(Boolean);
+
+  const wanted = normalizeAppName(appName);
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      const queue = [root];
+      while (queue.length > 0) {
+        const current = queue.shift();
+        const entries = fs.readdirSync(current, { withFileTypes: true });
+        for (const entry of entries) {
+          const full = path.join(current, entry.name);
+          if (entry.isDirectory()) {
+            queue.push(full);
+          } else if (entry.isFile() && /\.lnk$/i.test(entry.name)) {
+            const base = normalizeAppName(path.basename(entry.name, '.lnk'));
+            if (base === wanted || (wanted.length > 2 && (base.includes(wanted) || wanted.includes(base)))) {
+              try {
+                const info = shell.readShortcutLink(full);
+                if (
+                  info?.target &&
+                  fs.existsSync(info.target) &&
+                  /\.exe$/i.test(info.target) &&
+                  !/unins|uninstall|setup/i.test(info.target)
+                ) {
+                  return info.target;
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function findProgramDirectoryExe(appName) {
+  if (process.platform !== 'win32') return null;
+  const roots = [
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs'),
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+  ].filter(Boolean);
+
+  const wanted = normalizeAppName(appName);
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      const candidates = fs.readdirSync(root, { withFileTypes: true });
+      for (const item of candidates) {
+        if (!item.isDirectory()) continue;
+        const base = normalizeAppName(item.name);
+        if (base === wanted || (wanted.length > 2 && (base.includes(wanted) || wanted.includes(base)))) {
+          const dir = path.join(root, item.name);
+          const found = exeFromInstallDir(dir, appName);
+          if (found) return found;
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
 async function installWindowsPackage(installerFile, appName, version) {
+  // 1. Unblock file from Windows SmartScreen
+  try {
+    await new Promise((res) => {
+      exec(
+        `powershell -NoProfile -Command "Unblock-File -LiteralPath '${installerFile.replace(/'/g, "''")}'"`,
+        { timeout: 10000 },
+        () => res()
+      );
+    });
+  } catch {}
+
+  const isSetupOrMsi = /setup|install|\.msi$/i.test(path.basename(installerFile));
+  if (!isSetupOrMsi) {
+    // Standalone portable executable: already ready to run!
+    return {
+      executablePath: installerFile,
+      installLocation: path.dirname(installerFile),
+      uninstallString: null,
+      displayName: appName,
+    };
+  }
+
   const before = await listWindowsUninstallEntries();
   const beforeKeys = new Set(before.map((e) => e.PSChildName));
 
+  // 2. Execute installer
   if (/\.msi$/i.test(installerFile)) {
-    await runProcess('msiexec.exe', ['/i', installerFile, '/qn', '/norestart']);
+    await runProcess('msiexec.exe', ['/i', installerFile, '/qn', '/norestart'], 5 * 60 * 1000, false);
   } else {
-    await runProcess(installerFile, ['/S']);
+    // Try NSIS silent flag first (visible so UAC can be shown if needed)
+    let exitCode = await runProcess(installerFile, ['/S'], 60000, false);
+    if (exitCode !== 0) {
+      // Try InnoSetup silent flags
+      exitCode = await runProcess(
+        installerFile,
+        ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'],
+        60000,
+        false
+      );
+    }
+    if (exitCode !== 0) {
+      // If silent install was blocked or unsupported, launch installer interactively
+      await runProcess(installerFile, [], 10 * 60 * 1000, false);
+    }
   }
 
-  // NSIS/MSI write their uninstall entry just after the process exits.
+  // Allow Windows to complete writing shortcuts / uninstall entries
   await new Promise((resolve) => setTimeout(resolve, 2500));
 
+  // 3. Resolve the installed executable
+  // Priority A: Start Menu / Desktop shortcuts
+  const shortcutTarget = findShortcutTarget(appName);
+  if (shortcutTarget) {
+    return {
+      executablePath: shortcutTarget,
+      installLocation: path.dirname(shortcutTarget),
+      uninstallString: null,
+      displayName: appName,
+    };
+  }
+
+  // Priority B: Registry Programs & Features entry
   const after = await listWindowsUninstallEntries();
   const entry = pickInstallEntry(after, beforeKeys, appName, version);
-  const executablePath = resolveEntryExecutable(entry, appName);
+  const fromRegistry = resolveEntryExecutable(entry, appName);
+  if (fromRegistry) {
+    return {
+      executablePath: fromRegistry,
+      installLocation: entry?.InstallLocation || path.dirname(fromRegistry),
+      uninstallString: entry?.UninstallString || null,
+      displayName: entry?.DisplayName || appName,
+    };
+  }
+
+  // Priority C: Standard Program directories
+  const fromProgramDir = findProgramDirectoryExe(appName);
+  if (fromProgramDir) {
+    return {
+      executablePath: fromProgramDir,
+      installLocation: path.dirname(fromProgramDir),
+      uninstallString: null,
+      displayName: appName,
+    };
+  }
 
   return {
-    executablePath,
-    installLocation: entry?.InstallLocation || (executablePath ? path.dirname(executablePath) : null),
-    uninstallString: entry?.UninstallString || null,
-    displayName: entry?.DisplayName || appName,
+    executablePath: installerFile,
+    installLocation: path.dirname(installerFile),
+    uninstallString: null,
+    displayName: appName,
   };
 }
 
@@ -1180,20 +1321,47 @@ function setupIpc() {
               error: `Installer ready at ${destFile}. Close Vault X and run it manually to update this development build.`,
             };
           }
-          // Quit BEFORE the silent installer runs: a running app keeps its files locked,
-          // which made the installer do nothing and the old version reappear.
           isQuitting = true;
-          const quoted = destFile.replace(/"/g, '""');
-          const launcher = spawn(
-            'cmd.exe',
-            ['/c', `ping 127.0.0.1 -n 4 > nul & start "" "${quoted}" /S --updated`],
-            { detached: true, stdio: 'ignore', windowsHide: true }
-          );
+
+          // Unblock the downloaded installer to prevent Windows SmartScreen from aborting it
+          try {
+            exec(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${destFile.replace(/'/g, "''")}'"`);
+          } catch {}
+
+          // Create an update script that terminates running Vault X processes (releasing file locks),
+          // executes the installer, and relaunches the upgraded application.
+          const scriptFile = path.join(cacheDir, 'apply-vaultx-update.cmd');
+          const script = [
+            '@echo off',
+            'setlocal enabledelayedexpansion',
+            'timeout /t 1 /nobreak >nul',
+            'taskkill /F /IM "Vault X.exe" >nul 2>&1',
+            'timeout /t 1 /nobreak >nul',
+            `start "" /wait "${destFile}"`,
+            'timeout /t 1 /nobreak >nul',
+            'set "TARGET=%LOCALAPPDATA%\\Programs\\vault-x\\Vault X.exe"',
+            'if exist "!TARGET!" (',
+            '  start "" "!TARGET!"',
+            '  exit /b 0',
+            ')',
+            'set "TARGET=%ProgramFiles%\\Vault X\\Vault X.exe"',
+            'if exist "!TARGET!" (',
+            '  start "" "!TARGET!"',
+            '  exit /b 0',
+            ')',
+          ].join('\r\n');
+
+          fs.writeFileSync(scriptFile, script, 'utf-8');
+
+          const launcher = spawn('cmd.exe', ['/c', scriptFile], {
+            detached: true,
+            stdio: 'ignore',
+          });
           launcher.on('error', (e) => console.error('Failed to start the installer:', e));
           launcher.unref();
 
           sendProgress(100, 'Installing the update. Vault X will reopen automatically...');
-          setTimeout(() => app.exit(0), 800);
+          setTimeout(() => app.exit(0), 500);
           return { ok: true, message: 'Installing the update. Vault X will reopen automatically...' };
         } else if (process.platform === 'linux') {
           try {
