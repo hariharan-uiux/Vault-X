@@ -1092,29 +1092,97 @@ export default function App() {
             </div>
           </div>
           {filteredApps.length === 0 ? (
-            <div className="py-24 flex flex-col items-center justify-center text-center space-y-3 border border-zinc-800 bg-zinc-950">
-              <div className="h-12 w-12 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
-                <Search className="h-5 w-5" />
+            apps.length === 0 ? (
+              /* Case 1: No applications in catalog */
+              <div className="py-24 flex flex-col items-center justify-center text-center space-y-3 border border-zinc-800 bg-zinc-950">
+                <div className="h-12 w-12 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300">
+                  <GitBranch className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-zinc-200">No applications added yet</h3>
+                  <p className="text-xs text-zinc-400 mt-1 max-w-sm">
+                    Add your first app by pasting a GitHub repository link to install it on your machine.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setAddRepoModalOpen(true)}
+                  className="text-xs h-8 mt-2 bg-zinc-100 text-zinc-950 hover:bg-white font-medium flex items-center space-x-1.5"
+                >
+                  <GitBranch className="h-3.5 w-3.5" />
+                  <span>Add App from GitHub</span>
+                </Button>
               </div>
-              <div>
-                <h3 className="font-semibold text-sm text-zinc-200">No applications match your filter</h3>
-                <p className="text-xs text-zinc-500 mt-1 max-w-sm">
-                  Try clearing your search query or switching categories to browse more apps.
-                </p>
+            ) : activeTab === "installed" && installedCount === 0 ? (
+              /* Case 2: Installed tab has no installed apps */
+              <div className="py-24 flex flex-col items-center justify-center text-center space-y-3 border border-zinc-800 bg-zinc-950">
+                <div className="h-12 w-12 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400">
+                  <PackageCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-zinc-200">No applications installed yet</h3>
+                  <p className="text-xs text-zinc-400 mt-1 max-w-sm">
+                    Select an application from the catalog to install, or add a new app from GitHub.
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setActiveTab("catalog")
+                      setStatusFilter("all")
+                    }}
+                    className="text-xs h-8 border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-zinc-100"
+                  >
+                    Browse Catalog
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setAddRepoModalOpen(true)}
+                    className="text-xs h-8 bg-zinc-100 text-zinc-950 hover:bg-white font-medium flex items-center space-x-1.5"
+                  >
+                    <GitBranch className="h-3.5 w-3.5" />
+                    <span>Add App from GitHub</span>
+                  </Button>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery("")
-                  setSelectedCategory("All")
-                  setStatusFilter("all")
-                }}
-                className="text-xs h-8 mt-2"
-              >
-                Reset Filters
-              </Button>
-            </div>
+            ) : (
+              /* Case 3: Filter or search has no matching results */
+              <div className="py-24 flex flex-col items-center justify-center text-center space-y-3 border border-zinc-800 bg-zinc-950">
+                <div className="h-12 w-12 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500">
+                  <Search className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm text-zinc-200">No applications match your filter</h3>
+                  <p className="text-xs text-zinc-400 mt-1 max-w-sm">
+                    Try clearing your search query or add this project directly from its GitHub link.
+                  </p>
+                </div>
+                <div className="flex items-center space-x-2 mt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearchQuery("")
+                      setSelectedCategory("All")
+                      setStatusFilter("all")
+                    }}
+                    className="text-xs h-8 border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-zinc-100"
+                  >
+                    Reset Filters
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setAddRepoModalOpen(true)}
+                    className="text-xs h-8 bg-zinc-100 text-zinc-950 hover:bg-white font-medium flex items-center space-x-1.5"
+                  >
+                    <GitBranch className="h-3.5 w-3.5" />
+                    <span>Add App from GitHub</span>
+                  </Button>
+                </div>
+              </div>
+            )
           ) : viewMode === "grid" ? (
             <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 border-l border-t border-zinc-800">
               {filteredApps.map((app) => (
