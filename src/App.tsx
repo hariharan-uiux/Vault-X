@@ -856,50 +856,50 @@ export default function App() {
             {/* Check Updates Button */}
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={handleCheckAllUpdates}
               disabled={isCheckingUpdates}
-              className="text-xs h-8 border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100 px-2.5"
+              className="border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100"
               title="Check GitHub for latest app releases"
+              aria-label="Check Updates"
             >
-              <RefreshCw className={`h-3.5 w-3.5 sm:mr-1.5 ${isCheckingUpdates ? "animate-spin text-emerald-400" : ""}`} />
-              <span className="hidden sm:inline">{isCheckingUpdates ? "Checking..." : "Check Updates"}</span>
+              <RefreshCw className={`h-4 w-4 ${isCheckingUpdates ? "animate-spin text-emerald-400" : ""}`} />
             </Button>
 
             {/* Add app from GitHub */}
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => setAddRepoModalOpen(true)}
-              className="text-xs h-8 border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100 px-2.5"
+              className="border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100"
               title="Add an app from a GitHub repository link"
+              aria-label="Add App"
             >
-              <GitBranch className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">Add App</span>
+              <GitBranch className="h-4 w-4" />
             </Button>
 
             {/* Manifest Switcher Button */}
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => setManifestModalOpen(true)}
-              className="text-xs h-8 border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100 px-2.5"
+              className="border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100"
               title="Load custom catalog manifest"
+              aria-label="Manifest"
             >
-              <FolderOpen className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">Manifest</span>
+              <FolderOpen className="h-4 w-4" />
             </Button>
 
             {/* Settings Button */}
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               onClick={() => setSettingsModalOpen(true)}
-              className="text-xs h-8 border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100 px-2.5"
+              className="border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100"
               title="Launcher Settings (Ctrl+,)"
+              aria-label="Settings"
             >
-              <Settings className="h-3.5 w-3.5 sm:mr-1.5" />
-              <span className="hidden sm:inline">Settings</span>
+              <Settings className="h-4 w-4" />
             </Button>
           </div>
         </div>
