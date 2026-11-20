@@ -782,7 +782,7 @@ function setupIpc() {
 
   // Handle install / update logic
   async function performInstall(appItem, actionName = 'installing') {
-    const appId = appItem.id || 'relay';
+    const appId = appItem.id;
     const appDir = path.join(getInstalledAppsDir(), appId);
     fs.mkdirSync(appDir, { recursive: true });
 
@@ -899,50 +899,11 @@ function setupIpc() {
           };
         }
       }
-    } else if (githubRepo) {
+    } else {
       return {
         ok: false,
-        error: `The latest ${appItem.name} release has no installer for ${process.platform}.`,
+        error: `No release installer assets found on GitHub for ${appItem.name} (${process.platform}).`,
       };
-    } else {
-      // Local fallback if GitHub release assets are not yet published
-      const localRelayCandidates = [
-        path.join(__dirname, '../../relay'),
-        path.join(__dirname, '../../Relay'),
-        '/var/lib/openbot/OpenBot/Shared/repos/relay',
-        '/var/lib/openbot/OpenBot/Shared/repos/Relay',
-      ];
-      const localRepo = localRelayCandidates.find((p) => fs.existsSync(p));
-
-      if (localRepo) {
-        sendProgress(25, 'Found local Relay repository. Configuring standalone launcher...');
-        await new Promise((r) => setTimeout(r, 200));
-
-        sendProgress(60, 'Creating executable launcher script...');
-        const isWindows = process.platform === 'win32';
-        const scriptName = isWindows ? 'relay-launcher.cmd' : 'relay-launcher.sh';
-        const scriptPath = path.join(appDir, scriptName);
-
-        if (isWindows) {
-          fs.writeFileSync(scriptPath, `@echo off\r\ncd /d "${localRepo}"\r\ncall npm start\r\n`, 'utf-8');
-        } else {
-          fs.writeFileSync(
-            scriptPath,
-            `#!/usr/bin/env bash\ncd "${localRepo}"\nif command -v electron >/dev/null 2>&1; then\n  exec electron . "$@"\nelse\n  exec npm start "$@"\nfi\n`,
-            'utf-8'
-          );
-          fs.chmodSync(scriptPath, 0o755);
-        }
-
-        executablePath = scriptPath;
-        sendProgress(90, 'Configuring permissions and local storage...');
-        await new Promise((r) => setTimeout(r, 150));
-      } else {
-        return {
-          ok: false,
-          error: `No release assets found on GitHub for ${githubRepo} and local repository was not found.`,
-        };
-      }
     }
 
     sendProgress(100, `${appItem.name} v${targetVersion} ready to launch!`);
@@ -985,7 +946,7 @@ function setupIpc() {
   // Real App Launch
   ipcMain.handle('app:launch', async (_, { command, appName, appId }) => {
     const record = getInstalledRecord();
-    const targetId = appId || (appName ? appName.toLowerCase() : 'relay');
+    const targetId = appId || (appName ? appName.toLowerCase() : '');
     const appInfo = record[targetId] || {};
 
     let execPath = appInfo.executablePath;
@@ -1038,7 +999,7 @@ function setupIpc() {
   // Real App Uninstall
   ipcMain.handle('app:uninstall', async (_, arg) => {
     try {
-      const appId = typeof arg === 'string' ? arg : arg?.appId || 'relay';
+      const appId = typeof arg === 'string' ? arg : arg?.appId || '';
       let appName = typeof arg === 'object' ? arg?.appName : null;
 
       if (!appName) {
