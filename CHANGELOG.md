@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.4.1...vault-x-v1.4.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **installer:** robust Windows installer execution and update replacement ([025acb8](https://github.com/hariharan-uiux/Vault-X/commit/025acb8eae220e62c01beacc08ebec1efa153a40))
+
 ## [1.4.1](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.4.0...vault-x-v1.4.1) (2026-11-20)
 
 
