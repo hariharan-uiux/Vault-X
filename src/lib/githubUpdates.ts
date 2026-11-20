@@ -47,6 +47,62 @@ export function normalizeRepoInput(input: string, defaultOwner: string = "hariha
   return null
 }
 
+export function pickBestAsset(
+  assets: { name: string; size: number; downloadUrl: string }[],
+  platform = "win32",
+  arch = "x64"
+): { name: string; size: number; downloadUrl: string } | null {
+  const list = (assets || []).filter((a) => a && a.name && !/\.blockmap$/i.test(a.name))
+  const isArmMachine = arch === "arm64"
+
+  if (platform === "win32" || platform === "windows") {
+    const exes = list.filter((a) => /\.exe$/i.test(a.name))
+    const msis = list.filter((a) => /\.msi$/i.test(a.name))
+    const candidates = [...exes, ...msis]
+    if (!candidates.length) return list.find((a) => /\.zip$/i.test(a.name)) || null
+
+    const scored = candidates.map((asset) => {
+      const name = asset.name.toLowerCase()
+      let score = 0
+      const hasArm = /arm64|aarch64|armv7|arm/i.test(name)
+      const hasX64 = /x64|x86_64|amd64|win64/i.test(name)
+      const hasX86 = /ia32|x86|win32/i.test(name)
+      const isSetup = /setup|install/i.test(name)
+
+      if (isArmMachine) {
+        if (hasArm) score += 100
+        else if (!hasX64 && !hasX86) score += 50
+        else score -= 150
+      } else {
+        if (hasArm) score -= 200
+        else if (hasX64) score += 100
+        else if (!hasX86) score += 80
+        else score += 40
+      }
+      if (isSetup) score += 20
+      return { asset, score }
+    })
+    scored.sort((a, b) => b.score - a.score)
+    return scored[0]?.asset || candidates[0]
+  }
+
+  if (platform === "linux") {
+    const appimages = list.filter((a) => /\.appimage$/i.test(a.name))
+    const filtered = appimages.filter((a) =>
+      isArmMachine ? /arm64|aarch64/i.test(a.name) : !/arm64|aarch64/i.test(a.name)
+    )
+    return (
+      filtered[0] ||
+      appimages[0] ||
+      list.find((a) => /\.deb$/i.test(a.name)) ||
+      list.find((a) => /\.tar\.gz$/i.test(a.name)) ||
+      null
+    )
+  }
+
+  return list.find((a) => /\.dmg$/i.test(a.name)) || list.find((a) => /\.zip$/i.test(a.name)) || null
+}
+
 /** Browser fallback used when Vault X runs outside Electron. */
 export async function fetchRepoReleases(repoUrl: string): Promise<{
   repo: string

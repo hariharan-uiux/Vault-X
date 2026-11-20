@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { AppItem } from "@/types/catalog"
-import { fetchRepoReleases, parseVersionFromTag, RepoRelease } from "@/lib/githubUpdates"
+import { fetchRepoReleases, parseVersionFromTag, RepoRelease, pickBestAsset } from "@/lib/githubUpdates"
 
 interface AddRepoModalProps {
   open: boolean
@@ -72,7 +72,7 @@ export function AddRepoModal({ open, onOpenChange, onAddRepo, onRemoveRepo, onIn
   const buildApp = (repo: string, name: string, description: string, releases: RepoRelease[]): AppItem => {
     const latest = releases.find((r) => !r.prerelease) || releases[0] || null
     const [owner, repoName] = repo.split("/")
-    const asset = latest?.assets.find((a) => /setup|install/i.test(a.name) && /\.exe$/i.test(a.name)) || latest?.assets[0]
+    const asset = pickBestAsset(latest?.assets || [], "win32", "x64")
     return {
       id: `gh-${repo.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`,
       name: name || repoName,

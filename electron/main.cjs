@@ -319,25 +319,55 @@ async function queryGitHubReleases(githubRepo, limit = 12) {
 
 // Pick the best downloadable file for this machine from a release asset list.
 function pickAssetForPlatform(assets) {
-  const list = (assets || []).filter((a) => a && a.name);
+  const list = (assets || []).filter((a) => a && a.name && !/\.blockmap$/i.test(a.name));
+  const isArm = process.arch === 'arm64';
+
   if (process.platform === 'win32') {
-    const exes = list.filter((a) => /\.exe$/i.test(a.name) && !/\.blockmap$/i.test(a.name));
-    return (
-      exes.find((a) => /setup|install/i.test(a.name)) ||
-      exes[0] ||
-      list.find((a) => /\.msi$/i.test(a.name)) ||
-      list.find((a) => /\.zip$/i.test(a.name)) ||
-      null
-    );
+    const exes = list.filter((a) => /\.exe$/i.test(a.name));
+    const msis = list.filter((a) => /\.msi$/i.test(a.name));
+    const candidates = [...exes, ...msis];
+    if (!candidates.length) return list.find((a) => /\.zip$/i.test(a.name)) || null;
+
+    const scored = candidates.map((asset) => {
+      const name = asset.name.toLowerCase();
+      let score = 0;
+      const hasArm = /arm64|aarch64|armv7|arm/i.test(name);
+      const hasX64 = /x64|x86_64|amd64|win64/i.test(name);
+      const hasX86 = /ia32|x86|win32/i.test(name);
+      const isSetup = /setup|install/i.test(name);
+
+      if (isArm) {
+        if (hasArm) score += 100;
+        else if (!hasX64 && !hasX86) score += 50;
+        else score -= 150;
+      } else {
+        // x64 machine (standard Windows PC)
+        if (hasArm) score -= 200; // Heavily penalize ARM binaries on x64 PC!
+        else if (hasX64) score += 100; // Strongly prefer explicit x64
+        else if (!hasX86) score += 80; // Universal or general setup (e.g. Clack-1.2.0-setup.exe)
+        else score += 40; // 32-bit x86 fallback
+      }
+
+      if (isSetup) score += 20;
+      return { asset, score };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored[0]?.asset || candidates[0];
   }
+
   if (process.platform === 'linux') {
+    const appimages = list.filter((a) => /\.appimage$/i.test(a.name));
+    const filtered = appimages.filter((a) => (isArm ? /arm64|aarch64/i.test(a.name) : !/arm64|aarch64/i.test(a.name)));
     return (
-      list.find((a) => /\.appimage$/i.test(a.name)) ||
+      filtered[0] ||
+      appimages[0] ||
       list.find((a) => /\.deb$/i.test(a.name)) ||
       list.find((a) => /\.tar\.gz$/i.test(a.name)) ||
       null
     );
   }
+
   return list.find((a) => /\.dmg$/i.test(a.name)) || list.find((a) => /\.zip$/i.test(a.name)) || null;
 }
 
@@ -773,11 +803,9 @@ function setupIpc() {
     }
   });
 
-  // Prefer a real installer over a portable build when a release ships both.
+  // Prefer a real installer over a portable build and match architecture.
   function pickWindowsAsset(assets) {
-    const exes = (assets || []).filter((a) => /\.exe$/i.test(a.name) && !a.name.includes('blockmap'));
-    return exes.find((a) => /setup|install/i.test(a.name)) || exes[0] ||
-      (assets || []).find((a) => a.name.endsWith('.msi') || a.name.endsWith('.zip'));
+    return pickAssetForPlatform(assets);
   }
 
   // Handle install / update logic
