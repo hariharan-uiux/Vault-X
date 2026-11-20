@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -29,6 +29,7 @@ function createWindow() {
     backgroundColor: '#09090b',
     title: 'Vault X',
     titleBarStyle: 'hiddenInset',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -38,6 +39,8 @@ function createWindow() {
     },
     show: false,
   });
+
+  mainWindow.removeMenu();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -94,6 +97,7 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
     setupIpc();
     createWindow();
 
