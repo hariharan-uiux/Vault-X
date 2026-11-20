@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - "vault-x-v*"
-    branches:
-      - master
-    paths:
-      - ".github/workflows/build-release.yml"
-      - "electron/**"
-      - "package.json"
   workflow_dispatch:
 
 permissions:
