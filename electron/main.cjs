@@ -135,6 +135,34 @@ function saveInstalledRecord(record) {
   }
 }
 
+// Persistent store for repositories the user added by URL
+const getCustomAppsFile = () => path.join(app.getPath('userData'), 'custom-apps.json');
+
+function readCustomApps() {
+  try {
+    const file = getCustomAppsFile();
+    if (fs.existsSync(file)) {
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf-8'));
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to read custom-apps.json:', e);
+  }
+  return [];
+}
+
+function saveCustomApps(list) {
+  try {
+    const file = getCustomAppsFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(list, null, 2), 'utf-8');
+    return true;
+  } catch (e) {
+    console.error('Failed to save custom-apps.json:', e);
+    return false;
+  }
+}
+
 function downloadFileWithProgress(url, destPath, onProgress) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(destPath);
@@ -200,19 +228,41 @@ function downloadFileWithProgress(url, destPath, onProgress) {
   });
 }
 
-async function queryGitHubRelease(githubRepo) {
-  return new Promise((resolve) => {
-    const cleanRepo = githubRepo.replace(/^https?:\/\/github\.com\//, '').replace(/\/$/, '').trim();
-    if (!cleanRepo || !cleanRepo.includes('/')) {
-      return resolve(null);
-    }
+// Accepts "owner/repo", a full github.com URL, or just "repo" (defaults to user's account).
+function normalizeRepoInput(input, defaultOwner = 'hariharan-uiux') {
+  if (!input || typeof input !== 'string') return null;
+  let value = input.trim();
+  value = value.replace(/^git@github\.com:/i, '');
+  value = value.replace(/^https?:\/\/(www\.)?github\.com\//i, '');
+  value = value.replace(/^github\.com\//i, '');
+  value = value.split(/[?#]/)[0];
+  value = value.replace(/\.git$/i, '').replace(/\/+$/, '');
+  const parts = value.split('/').filter(Boolean);
+  if (parts.length === 1 && /^[\w.-]+$/.test(parts[0])) {
+    return `${defaultOwner}/${parts[0]}`;
+  }
+  if (parts.length < 2) return null;
+  const owner = parts[0];
+  const repo = parts[1];
+  if (!/^[\w.-]+$/.test(owner) || !/^[\w.-]+$/.test(repo)) return null;
+  return `${owner}/${repo}`;
+}
 
-    const url = `https://api.github.com/repos/${cleanRepo}/releases/latest`;
+// "vault-x-v1.2.0", "relay-v1.0.7" and "v1.2.3" all resolve to "1.2.0" style versions.
+function versionFromTag(tag) {
+  if (!tag) return '';
+  const match = String(tag).match(/(\d+\.\d+(?:\.\d+)?)/);
+  if (match) return match[1];
+  return String(tag).replace(/^[vV]/, '').trim();
+}
+
+function githubJson(url) {
+  return new Promise((resolve) => {
     const req = https.get(
       url,
       {
         headers: {
-          'User-Agent': 'Vault-X/1.1.0',
+          'User-Agent': 'Vault-X',
           Accept: 'application/vnd.github.v3+json',
         },
       },
@@ -235,7 +285,313 @@ async function queryGitHubRelease(githubRepo) {
       }
     );
     req.on('error', () => resolve(null));
+    req.setTimeout(20000, () => {
+      req.destroy();
+      resolve(null);
+    });
   });
+}
+
+async function queryGitHubRelease(githubRepo) {
+  const cleanRepo = normalizeRepoInput(githubRepo);
+  if (!cleanRepo) return null;
+  return githubJson(`https://api.github.com/repos/${cleanRepo}/releases/latest`);
+}
+
+async function queryGitHubReleases(githubRepo, limit = 12) {
+  const cleanRepo = normalizeRepoInput(githubRepo);
+  if (!cleanRepo) return [];
+  const list = await githubJson(`https://api.github.com/repos/${cleanRepo}/releases?per_page=${limit}`);
+  return Array.isArray(list) ? list : [];
+}
+
+// Pick the best downloadable file for this machine from a release asset list.
+function pickAssetForPlatform(assets) {
+  const list = (assets || []).filter((a) => a && a.name);
+  if (process.platform === 'win32') {
+    const exes = list.filter((a) => /\.exe$/i.test(a.name) && !/\.blockmap$/i.test(a.name));
+    return (
+      exes.find((a) => /setup|install/i.test(a.name)) ||
+      exes[0] ||
+      list.find((a) => /\.msi$/i.test(a.name)) ||
+      list.find((a) => /\.zip$/i.test(a.name)) ||
+      null
+    );
+  }
+  if (process.platform === 'linux') {
+    return (
+      list.find((a) => /\.appimage$/i.test(a.name)) ||
+      list.find((a) => /\.deb$/i.test(a.name)) ||
+      list.find((a) => /\.tar\.gz$/i.test(a.name)) ||
+      null
+    );
+  }
+  return list.find((a) => /\.dmg$/i.test(a.name)) || list.find((a) => /\.zip$/i.test(a.name)) || null;
+}
+
+function prettyRepoName(name) {
+  if (!name) return name;
+  // "clack-windows" -> "Clack Windows"; leave names that already use capitals.
+  if (/[A-Z]/.test(name)) return name;
+  return name
+    .split(/[-_.]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function buildAppFromRepo(repoInfo, release) {
+  const fullName = repoInfo?.full_name || repoInfo?.repo || '';
+  const [owner, repoName] = fullName.split('/');
+  const latestVersion = versionFromTag(release?.tag_name || '');
+  const asset = pickAssetForPlatform(release?.assets);
+  const id = `gh-${fullName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+
+  const app = {
+    id,
+    name: prettyRepoName(repoInfo?.name || repoName || fullName),
+    description: repoInfo?.description || release?.name || `GitHub project ${fullName}`,
+    icon: 'Package',
+    category: 'My Repos',
+    tags: ['GitHub', 'Added by you'],
+    version: latestVersion || '0.0.0',
+    installedVersion: null,
+    status: 'not_installed',
+    author: repoInfo?.owner?.login || owner || 'GitHub',
+    size: asset ? `${(asset.size / 1024 / 1024).toFixed(0)} MB` : '—',
+    homepage: repoInfo?.html_url || `https://github.com/${fullName}`,
+    github: fullName,
+    releaseNotes: release?.body || '',
+    releaseUrl: release?.html_url || `https://github.com/${fullName}/releases`,
+    source: 'custom',
+    installTargets: {},
+  };
+
+  if (asset) {
+    const target = {
+      type: /\.msi$/i.test(asset.name) ? 'msi' : 'exe',
+      command: asset.name,
+      downloadUrl: asset.browser_download_url,
+    };
+    if (process.platform === 'win32') app.installTargets.windows = target;
+    else if (process.platform === 'darwin') app.installTargets.macos = target;
+    else app.installTargets.linux = target;
+  }
+
+  return app;
+}
+
+// ---------- Windows install helpers ----------
+
+function runProcess(file, args, timeoutMs = 10 * 60 * 1000) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const child = spawn(file, args, { stdio: 'ignore', windowsHide: true });
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch {}
+      reject(new Error(`${file} did not finish within ${Math.round(timeoutMs / 60000)} minutes`));
+    }, timeoutMs);
+
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on('exit', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+}
+
+const normalizeAppName = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Reads the Windows "Programs and Features" registry list, newest-agnostic.
+function listWindowsUninstallEntries() {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve([]);
+
+    const script = [
+      "$paths = @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')",
+      "$items = Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object DisplayName,DisplayVersion,InstallLocation,DisplayIcon,UninstallString,PSChildName",
+      "if ($items) { $items | ConvertTo-Json -Compress }",
+    ].join('; ');
+
+    const scriptPath = path.join(app.getPath('temp'), `vaultx-registry-${process.pid}.ps1`);
+    try {
+      fs.writeFileSync(scriptPath, script, 'utf-8');
+    } catch {
+      return resolve([]);
+    }
+
+    exec(
+      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptPath}"`,
+      { maxBuffer: 8 * 1024 * 1024, windowsHide: true, timeout: 30000 },
+      (err, stdout) => {
+        try { fs.unlinkSync(scriptPath); } catch {}
+        if (err || !stdout) return resolve([]);
+        try {
+          const parsed = JSON.parse(stdout.trim());
+          resolve(Array.isArray(parsed) ? parsed : [parsed]);
+        } catch {
+          resolve([]);
+        }
+      }
+    );
+  });
+}
+
+function exeFromInstallDir(dir, appName) {
+  if (!dir || !fs.existsSync(dir)) return null;
+  try {
+    const exes = fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => e.isFile() && /\.exe$/i.test(e.name) && !/unins|uninstall|update|setup|crash/i.test(e.name))
+      .map((e) => path.join(dir, e.name));
+    if (!exes.length) return null;
+    const wanted = normalizeAppName(appName);
+    return (
+      exes.find((p) => normalizeAppName(path.basename(p, '.exe')) === wanted) ||
+      exes.find((p) => normalizeAppName(path.basename(p, '.exe')).includes(wanted) && wanted.length > 2) ||
+      exes[0]
+    );
+  } catch {
+    return null;
+  }
+}
+
+function pickInstallEntry(entries, beforeKeys, appName, version) {
+  const wanted = normalizeAppName(appName);
+  const scored = (entries || [])
+    .map((entry) => {
+      const name = normalizeAppName(entry.DisplayName);
+      let score = 0;
+      if (name === wanted) score += 100;
+      else if (wanted.length > 2 && (name.includes(wanted) || wanted.includes(name))) score += 60;
+      if (entry.DisplayVersion && version && versionFromTag(entry.DisplayVersion) === version) score += 30;
+      if (!beforeKeys.has(entry.PSChildName)) score += 25;
+      if (entry.InstallLocation) score += 10;
+      return { entry, score };
+    })
+    .filter((item) => item.score >= 50)
+    .sort((a, b) => b.score - a.score);
+
+  return scored.length ? scored[0].entry : null;
+}
+
+function resolveEntryExecutable(entry, appName) {
+  if (!entry) return null;
+
+  const icon = String(entry.DisplayIcon || '').replace(/^"|"$/g, '').split(',')[0].trim();
+  if (/\.exe$/i.test(icon) && fs.existsSync(icon)) return icon;
+
+  const fromLocation = exeFromInstallDir(entry.InstallLocation, appName);
+  if (fromLocation) return fromLocation;
+
+  const fromIconDir = icon ? exeFromInstallDir(path.dirname(icon), appName) : null;
+  if (fromIconDir) return fromIconDir;
+
+  const roots = [
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs'),
+    process.env.ProgramFiles,
+    process.env['ProgramFiles(x86)'],
+  ].filter(Boolean);
+  const wanted = normalizeAppName(appName);
+
+  for (const root of roots) {
+    const direct = path.join(root, appName);
+    const directExe = exeFromInstallDir(direct, appName);
+    if (directExe) return directExe;
+    try {
+      const match = fs
+        .readdirSync(root, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && normalizeAppName(e.name).includes(wanted))
+        .map((e) => path.join(root, e.name))[0];
+      const exe = exeFromInstallDir(match, appName);
+      if (exe) return exe;
+    } catch {}
+  }
+
+  return null;
+}
+
+async function installWindowsPackage(installerFile, appName, version) {
+  const before = await listWindowsUninstallEntries();
+  const beforeKeys = new Set(before.map((e) => e.PSChildName));
+
+  if (/\.msi$/i.test(installerFile)) {
+    await runProcess('msiexec.exe', ['/i', installerFile, '/qn', '/norestart']);
+  } else {
+    await runProcess(installerFile, ['/S']);
+  }
+
+  // NSIS/MSI write their uninstall entry just after the process exits.
+  await new Promise((resolve) => setTimeout(resolve, 2500));
+
+  const after = await listWindowsUninstallEntries();
+  const entry = pickInstallEntry(after, beforeKeys, appName, version);
+  const executablePath = resolveEntryExecutable(entry, appName);
+
+  return {
+    executablePath,
+    installLocation: entry?.InstallLocation || (executablePath ? path.dirname(executablePath) : null),
+    uninstallString: entry?.UninstallString || null,
+    displayName: entry?.DisplayName || appName,
+  };
+}
+
+async function runUninstaller(uninstallString) {
+  if (!uninstallString) return false;
+  const match = String(uninstallString).match(/"([^"]+)"|^(\S+\.exe)/i);
+  const exe = match ? match[1] || match[2] : null;
+  if (!exe || !fs.existsSync(exe)) return false;
+  try {
+    await runProcess(exe, ['/S'], 3 * 60 * 1000);
+    return true;
+  } catch (e) {
+    console.warn('Could not run uninstaller silently:', e.message);
+    return false;
+  }
+}
+
+// Removes the previous copy of an app after a successful upgrade.
+async function removePreviousInstall(previous, newExecutablePath, appId, keepFileName) {
+  const appDir = path.join(getInstalledAppsDir(), appId);
+  const keep = keepFileName ? path.resolve(path.join(appDir, keepFileName)) : null;
+  const installedPath = newExecutablePath ? path.resolve(newExecutablePath) : null;
+
+  // Drop older cached installers / old portable builds in our own folder only.
+  try {
+    for (const name of fs.readdirSync(appDir)) {
+      const full = path.resolve(path.join(appDir, name));
+      if (full === keep || full === installedPath) continue;
+      if (/setup|install|\.appimage$/i.test(name)) {
+        try { fs.rmSync(full, { force: true }); } catch {}
+      }
+    }
+  } catch {}
+
+  if (!previous) return;
+  const oldExe = previous.executablePath;
+  if (!oldExe || !fs.existsSync(oldExe)) return;
+
+  const oldDir = path.resolve(path.dirname(oldExe));
+  const newDir = newExecutablePath ? path.resolve(path.dirname(newExecutablePath)) : null;
+  if (newDir && oldDir.toLowerCase() === newDir.toLowerCase()) return; // upgraded in place
+
+  if (previous.uninstallString) {
+    await runUninstaller(previous.uninstallString);
+  }
+
+  // Only delete folders we created ourselves; never touch user program folders.
+  if (fs.existsSync(oldDir) && oldDir.toLowerCase().startsWith(path.resolve(getInstalledAppsDir()).toLowerCase())) {
+    try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch {}
+  }
 }
 
 function setupIpc() {
@@ -308,14 +664,15 @@ function setupIpc() {
 
     sendProgress(5, `Querying GitHub releases for ${appItem.name}...`);
 
-    const githubRepo = appItem.github || 'hariharan-uiux/Relay';
-    const release = await queryGitHubRelease(githubRepo);
+    const githubRepo = normalizeRepoInput(appItem.github) || appItem.github;
+    const previous = getInstalledRecord()[appId] || null;
+    const release = githubRepo ? await queryGitHubRelease(githubRepo) : null;
 
     let targetAsset = null;
-    let targetVersion = appItem.version || '1.0.0';
+    let targetVersion = versionFromTag(appItem.version) || appItem.version || '1.0.0';
 
     if (release && release.tag_name) {
-      targetVersion = release.tag_name.replace(/^[vV]/, '').trim();
+      targetVersion = versionFromTag(release.tag_name);
       const assets = release.assets || [];
 
       if (process.platform === 'linux') {
@@ -330,6 +687,7 @@ function setupIpc() {
     }
 
     let executablePath = null;
+    let installed = null;
 
     if (targetAsset && targetAsset.browser_download_url) {
       sendProgress(15, `Downloading ${targetAsset.name} from GitHub...`);
@@ -357,6 +715,25 @@ function setupIpc() {
           console.warn('Could not chmod executable:', e);
         }
       }
+
+      // On Windows the downloaded file is an installer, not the app itself.
+      // Run it silently, then remember the real executable it installed.
+      if (process.platform === 'win32' && /\.(exe|msi)$/i.test(targetAsset.name)) {
+        sendProgress(96, `Installing ${appItem.name} v${targetVersion} on this PC...`);
+        try {
+          installed = await installWindowsPackage(destFile, appItem.name, targetVersion);
+        } catch (err) {
+          return { ok: false, error: `Installer failed: ${err.message}` };
+        }
+        if (installed?.executablePath) {
+          executablePath = installed.executablePath;
+        }
+      }
+    } else if (githubRepo) {
+      return {
+        ok: false,
+        error: `The latest ${appItem.name} release has no installer for ${process.platform}.`,
+      };
     } else {
       // Local fallback if GitHub release assets are not yet published
       const localRelayCandidates = [
@@ -398,6 +775,9 @@ function setupIpc() {
       }
     }
 
+    sendProgress(97, 'Removing the previous version...');
+    await removePreviousInstall(previous, executablePath, appId, targetAsset?.name);
+
     sendProgress(100, `${appItem.name} v${targetVersion} installed successfully!`);
 
     const record = getInstalledRecord();
@@ -405,6 +785,8 @@ function setupIpc() {
       status: 'installed',
       installedVersion: targetVersion,
       executablePath,
+      installLocation: installed?.installLocation || (executablePath ? path.dirname(executablePath) : null),
+      uninstallString: installed?.uninstallString || null,
       installedAt: new Date().toISOString(),
     };
     saveInstalledRecord(record);
@@ -413,6 +795,7 @@ function setupIpc() {
       ok: true,
       version: targetVersion,
       executablePath,
+      installLocation: record[appId].installLocation,
     };
   }
 
@@ -477,6 +860,20 @@ function setupIpc() {
       const targetId = appId || 'relay';
       const record = getInstalledRecord();
       const appDir = path.join(getInstalledAppsDir(), targetId);
+      const info = record[targetId] || null;
+
+      // Remove the real installed copy first (Program Files / LocalAppData).
+      if (info?.uninstallString) {
+        await runUninstaller(info.uninstallString);
+      } else if (info?.executablePath && fs.existsSync(info.executablePath)) {
+        const exeDir = path.dirname(info.executablePath);
+        try {
+          const uninstaller = fs
+            .readdirSync(exeDir)
+            .find((name) => /^unins.*\.exe$/i.test(name) || /^uninstall.*\.exe$/i.test(name));
+          if (uninstaller) await runUninstaller(`"${path.join(exeDir, uninstaller)}"`);
+        } catch {}
+      }
 
       if (fs.existsSync(appDir)) {
         fs.rmSync(appDir, { recursive: true, force: true });
@@ -489,6 +886,86 @@ function setupIpc() {
     } catch (err) {
       return { ok: false, error: err.message };
     }
+  });
+
+  // ---------- User-added GitHub repositories ----------
+
+  ipcMain.handle('repos:list', async () => {
+    return { ok: true, apps: readCustomApps() };
+  });
+
+  ipcMain.handle('repos:inspect', async (_, input) => {
+    const fullName = normalizeRepoInput(input);
+    if (!fullName) {
+      return { ok: false, error: 'That does not look like a GitHub repository link.' };
+    }
+
+    const [repoInfo, releases] = await Promise.all([
+      githubJson(`https://api.github.com/repos/${fullName}`),
+      queryGitHubReleases(fullName),
+    ]);
+
+    if (!repoInfo && !releases.length) {
+      return {
+        ok: false,
+        error: `Could not read ${fullName}. Check the link, or that the repository is public.`,
+      };
+    }
+
+    const published = releases.filter((r) => !r.draft);
+    const latest = published.find((r) => !r.prerelease) || published[0] || null;
+    const app = buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
+
+    return {
+      ok: true,
+      app,
+      repo: fullName,
+      releases: published.map((r) => ({
+        tag: r.tag_name,
+        name: r.name,
+        publishedAt: r.published_at,
+        prerelease: !!r.prerelease,
+        htmlUrl: r.html_url,
+        notes: r.body,
+        asset: pickAssetForPlatform(r.assets)?.name || null,
+      })),
+    };
+  });
+
+  ipcMain.handle('repos:add', async (_, input) => {
+    const fullName = normalizeRepoInput(input);
+    if (!fullName) {
+      return { ok: false, error: 'That does not look like a GitHub repository link.' };
+    }
+
+    const [repoInfo, releases] = await Promise.all([
+      githubJson(`https://api.github.com/repos/${fullName}`),
+      queryGitHubReleases(fullName),
+    ]);
+
+    if (!repoInfo && !releases.length) {
+      return { ok: false, error: `Could not read ${fullName} from GitHub.` };
+    }
+
+    const published = releases.filter((r) => !r.draft);
+    const latest = published.find((r) => !r.prerelease) || published[0] || null;
+    const app = buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
+
+    const list = readCustomApps().filter((a) => a.github !== app.github);
+    list.push(app);
+    if (!saveCustomApps(list)) {
+      return { ok: false, error: 'Could not save the repository list.' };
+    }
+
+    return { ok: true, app, apps: list };
+  });
+
+  ipcMain.handle('repos:remove', async (_, appId) => {
+    const list = readCustomApps().filter((a) => a.id !== appId);
+    if (!saveCustomApps(list)) {
+      return { ok: false, error: 'Could not update the repository list.' };
+    }
+    return { ok: true, apps: list };
   });
 
   // Open external URL

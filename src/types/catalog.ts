@@ -26,7 +26,10 @@ export interface AppItem {
   installTargets?: {
     linux?: InstallTarget
     windows?: InstallTarget
+    macos?: InstallTarget
   }
+  /** "custom" apps were added by the user from a GitHub link. */
+  source?: "catalog" | "custom"
 }
 
 export interface CatalogManifest {

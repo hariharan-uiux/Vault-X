@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Settings,
   X,
+  GitBranch,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,6 +36,7 @@ import {
 import { AppCard } from "@/components/AppCard"
 import { AppListItem } from "@/components/AppListItem"
 import { ManifestModal } from "@/components/ManifestModal"
+import { AddRepoModal } from "@/components/AddRepoModal"
 import { AppDetailModal } from "@/components/AppDetailModal"
 import { SettingsModal } from "@/components/SettingsModal"
 import { AppItem, CatalogManifest, ViewMode, StatusFilter, AppStatus } from "@/types/catalog"
@@ -80,7 +82,60 @@ declare global {
       }>
       applyLauncherUpdate?: (updateInfo?: any) => Promise<{ ok: boolean; message?: string; error?: string }>
       onUpdaterProgress?: (callback: (data: { progress: number; bytesReceived?: number; totalBytes?: number; statusText: string }) => void) => () => void
+      listRepos?: () => Promise<{ ok: boolean; apps?: AppItem[]; error?: string }>
+      inspectRepo?: (input: string) => Promise<{
+        ok: boolean
+        app?: AppItem
+        releases?: Array<{
+          tag: string
+          name?: string
+          publishedAt?: string
+          prerelease?: boolean
+          htmlUrl?: string
+          notes?: string
+          asset?: string | null
+        }>
+        error?: string
+      }>
+      addRepo?: (input: string) => Promise<{ ok: boolean; app?: AppItem; apps?: AppItem[]; error?: string }>
+      removeRepo?: (appId: string) => Promise<{ ok: boolean; apps?: AppItem[]; error?: string }>
     }
+  }
+}
+
+const ADDED_REPOS_KEY = "vaultx_added_repos"
+
+/** User-added repos come from the local store; the catalog comes from apps.json. */
+function mergeCustomApps(base: AppItem[], custom: AppItem[]): AppItem[] {
+  const known = new Set(base.map((a) => a.id))
+  return [...base, ...custom.filter((a) => a && a.id && !known.has(a.id))]
+}
+
+function applyInstalledState(
+  list: AppItem[],
+  installed: Record<string, { status: string; installedVersion: string }>
+): AppItem[] {
+  return list.map((a) => {
+    const found = installed[a.id]
+    if (!found) return a
+    return {
+      ...a,
+      status: (found.status || "installed") as AppStatus,
+      installedVersion: found.installedVersion || a.version,
+    }
+  })
+}
+
+async function loadCustomApps(): Promise<AppItem[]> {
+  if (window.electronAPI?.listRepos) {
+    const res = await window.electronAPI.listRepos()
+    if (res.ok && Array.isArray(res.apps)) return res.apps
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADDED_REPOS_KEY) || "[]")
+    return Array.isArray(saved) ? saved : []
+  } catch {
+    return []
   }
 }
 
@@ -104,6 +159,8 @@ export default function App() {
   const [launcherUpdateProgress, setLauncherUpdateProgress] = useState<{ progress: number; statusText: string } | null>(null)
   const [launcherUpdateDismissed, setLauncherUpdateDismissed] = useState(false)
   const [showChangelogModal, setShowChangelogModal] = useState(false)
+  const [addRepoModalOpen, setAddRepoModalOpen] = useState(false)
+  const installedStateRef = useRef<Record<string, { status: string; installedVersion: string }>>({})
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -176,13 +233,20 @@ export default function App() {
         }
       }
 
+      // Apps the user added from a GitHub link are kept in a local file.
+      const customApps = await loadCustomApps()
+      const combinedApps = applyInstalledState(
+        mergeCustomApps(initialApps, customApps),
+        installedStateRef.current
+      )
+
       setManifest(data)
-      setApps(initialApps)
+      setApps(combinedApps)
       localStorage.setItem(MANIFEST_SOURCE_KEY, JSON.stringify({ source, type }))
 
       // Background check for GitHub releases on load
       setTimeout(() => {
-        checkAppUpdates(initialApps)
+        checkAppUpdates(combinedApps)
           .then(({ updatedApps, updatesFound }) => {
             if (updatesFound > 0) {
               persistAppChange(updatedApps)
@@ -219,6 +283,7 @@ export default function App() {
     if (window.electronAPI?.getInstalledState) {
       window.electronAPI.getInstalledState().then((res) => {
         if (res.ok && res.installed) {
+          installedStateRef.current = res.installed as Record<string, { status: string; installedVersion: string }>
           setApps((prevApps) =>
             prevApps.map((a) => {
               const installed = res.installed?.[a.id]
@@ -487,8 +552,9 @@ export default function App() {
 
   // App Action: Install (real Electron installation with streaming progress)
   const handleInstall = async (app: AppItem) => {
-    if (systemPlatform === "windows" && !app.installTargets?.windows) {
-      showToast(`${app.name} is only supported on Linux`, "error")
+    const platformTarget = systemPlatform === "windows" ? app.installTargets?.windows : app.installTargets?.linux
+    if (app.installTargets && !platformTarget) {
+      showToast(`${app.name} has no ${systemPlatform} download in its latest release`, "error")
       return
     }
     setBusyState((prev) => ({ ...prev, [app.id]: { action: "installing", progress: 5 } }))
@@ -618,6 +684,33 @@ export default function App() {
     )
     persistAppChange(nextApps)
     showToast(`${app.name} uninstalled`, "info")
+  }
+
+  // Add a GitHub repository the user pasted
+  const handleAddRepo = async (app: AppItem) => {
+    setApps((prev) => mergeCustomApps(prev, [app]))
+    if (!window.electronAPI?.listRepos) {
+      // Browser fallback: keep the list in localStorage
+      const current = await loadCustomApps()
+      const next = [...current.filter((a) => a.github !== app.github), app]
+      localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(next))
+    }
+    showToast(`${app.name} added. Click Install to get v${app.version}.`, "success")
+  }
+
+  const handleRemoveRepo = async (appId: string) => {
+    if (window.electronAPI?.removeRepo) {
+      const res = await window.electronAPI.removeRepo(appId)
+      if (!res.ok) {
+        showToast(res.error || "Could not remove that repository", "error")
+        return
+      }
+    } else {
+      const current = await loadCustomApps()
+      localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(current.filter((a) => a.id !== appId)))
+    }
+    setApps((prev) => prev.filter((a) => a.id !== appId))
+    showToast("Repository removed from Vault X", "info")
   }
 
   // Batch Action: Update All
@@ -769,6 +862,18 @@ export default function App() {
             >
               <RefreshCw className={`h-3.5 w-3.5 sm:mr-1.5 ${isCheckingUpdates ? "animate-spin text-emerald-400" : ""}`} />
               <span className="hidden sm:inline">{isCheckingUpdates ? "Checking..." : "Check Updates"}</span>
+            </Button>
+
+            {/* Add app from GitHub */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddRepoModalOpen(true)}
+              className="text-xs h-8 border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100 px-2.5"
+              title="Add an app from a GitHub repository link"
+            >
+              <GitBranch className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">Add App</span>
             </Button>
 
             {/* Manifest Switcher Button */}
@@ -1098,6 +1203,15 @@ export default function App() {
           )}
         </div>
       </nav>
+
+      {/* Add App from GitHub Modal */}
+      <AddRepoModal
+        open={addRepoModalOpen}
+        onOpenChange={setAddRepoModalOpen}
+        onAddRepo={handleAddRepo}
+        onRemoveRepo={handleRemoveRepo}
+        onInstall={handleInstall}
+      />
 
       {/* Manifest Modal */}
       <ManifestModal

@@ -24,4 +24,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('updater:progress', handler);
     return () => ipcRenderer.removeListener('updater:progress', handler);
   },
+  listRepos: () => ipcRenderer.invoke('repos:list'),
+  inspectRepo: (input) => ipcRenderer.invoke('repos:inspect', input),
+  addRepo: (input) => ipcRenderer.invoke('repos:add', input),
+  removeRepo: (appId) => ipcRenderer.invoke('repos:remove', appId),
 });
