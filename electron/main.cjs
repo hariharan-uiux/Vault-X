@@ -690,55 +690,6 @@ async function installWindowsPackage(installerFile, appName, version) {
   };
 }
 
-async function runUninstaller(uninstallString) {
-  if (!uninstallString) return false;
-  const match = String(uninstallString).match(/"([^"]+)"|^(\S+\.exe)/i);
-  const exe = match ? match[1] || match[2] : null;
-  if (!exe || !fs.existsSync(exe)) return false;
-  try {
-    await runProcess(exe, ['/S'], 3 * 60 * 1000);
-    return true;
-  } catch (e) {
-    console.warn('Could not run uninstaller silently:', e.message);
-    return false;
-  }
-}
-
-// Removes the previous copy of an app after a successful upgrade.
-async function removePreviousInstall(previous, newExecutablePath, appId, keepFileName) {
-  const appDir = path.join(getInstalledAppsDir(), appId);
-  const keep = keepFileName ? path.resolve(path.join(appDir, keepFileName)) : null;
-  const installedPath = newExecutablePath ? path.resolve(newExecutablePath) : null;
-
-  // Drop older cached installers / old portable builds in our own folder only.
-  try {
-    for (const name of fs.readdirSync(appDir)) {
-      const full = path.resolve(path.join(appDir, name));
-      if (full === keep || full === installedPath) continue;
-      if (/setup|install|\.appimage$/i.test(name)) {
-        try { fs.rmSync(full, { force: true }); } catch {}
-      }
-    }
-  } catch {}
-
-  if (!previous) return;
-  const oldExe = previous.executablePath;
-  if (!oldExe || !fs.existsSync(oldExe)) return;
-
-  const oldDir = path.resolve(path.dirname(oldExe));
-  const newDir = newExecutablePath ? path.resolve(path.dirname(newExecutablePath)) : null;
-  if (newDir && oldDir.toLowerCase() === newDir.toLowerCase()) return; // upgraded in place
-
-  if (previous.uninstallString) {
-    await runUninstaller(previous.uninstallString);
-  }
-
-  // Only delete folders we created ourselves; never touch user program folders.
-  if (fs.existsSync(oldDir) && oldDir.toLowerCase().startsWith(path.resolve(getInstalledAppsDir()).toLowerCase())) {
-    try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch {}
-  }
-}
-
 function setupIpc() {
   // Read local catalog file
   ipcMain.handle('catalog:read-local', async (_, filePath) => {
@@ -861,17 +812,52 @@ function setupIpc() {
         }
       }
 
-      // On Windows the downloaded file is an installer, not the app itself.
-      // Run it silently, then remember the real executable it installed.
-      if (process.platform === 'win32' && /\.(exe|msi)$/i.test(targetAsset.name)) {
-        sendProgress(96, `Installing ${appItem.name} v${targetVersion} on this PC...`);
+      // On Windows: unblock the downloaded file to prevent Windows SmartScreen blocks
+      if (process.platform === 'win32') {
         try {
-          installed = await installWindowsPackage(destFile, appItem.name, targetVersion);
-        } catch (err) {
-          return { ok: false, error: `Installer failed: ${err.message}` };
-        }
-        if (installed?.executablePath) {
-          executablePath = installed.executablePath;
+          await new Promise((res) => {
+            exec(
+              `powershell -NoProfile -Command "Unblock-File -LiteralPath '${destFile.replace(/'/g, "''")}'"`,
+              { timeout: 10000 },
+              () => res()
+            );
+          });
+        } catch {}
+
+        const isInstaller = /setup|install|\.msi$/i.test(targetAsset.name);
+        if (isInstaller) {
+          sendProgress(95, `Opening ${appItem.name} setup wizard on your screen...`);
+          try {
+            if (/\.msi$/i.test(destFile)) {
+              exec(`msiexec.exe /i "${destFile}"`);
+            } else {
+              await shell.openPath(destFile);
+            }
+          } catch (e) {
+            spawn(destFile, [], { detached: true });
+          }
+
+          sendProgress(100, `Setup wizard opened! Complete the installation on your screen.`);
+
+          // Look for any existing or immediately created shortcut / program directory
+          const detected = findShortcutTarget(appItem.name) || findProgramDirectoryExe(appItem.name);
+
+          const record = getInstalledRecord();
+          record[appId] = {
+            status: 'installed',
+            installedVersion: targetVersion,
+            installerPath: destFile,
+            executablePath: detected || null,
+            installedAt: new Date().toISOString(),
+          };
+          saveInstalledRecord(record);
+
+          return {
+            ok: true,
+            version: targetVersion,
+            executablePath: detected || null,
+            message: `Setup wizard opened! Complete installation on your screen.`,
+          };
         }
       }
     } else if (githubRepo) {
@@ -920,18 +906,13 @@ function setupIpc() {
       }
     }
 
-    sendProgress(97, 'Removing the previous version...');
-    await removePreviousInstall(previous, executablePath, appId, targetAsset?.name);
-
-    sendProgress(100, `${appItem.name} v${targetVersion} installed successfully!`);
+    sendProgress(100, `${appItem.name} v${targetVersion} ready to launch!`);
 
     const record = getInstalledRecord();
     record[appId] = {
       status: 'installed',
       installedVersion: targetVersion,
       executablePath,
-      installLocation: installed?.installLocation || (executablePath ? path.dirname(executablePath) : null),
-      uninstallString: installed?.uninstallString || null,
       installedAt: new Date().toISOString(),
     };
     saveInstalledRecord(record);
@@ -940,7 +921,7 @@ function setupIpc() {
       ok: true,
       version: targetVersion,
       executablePath,
-      installLocation: record[appId].installLocation,
+      message: `${appItem.name} v${targetVersion} ready to launch!`,
     };
   }
 
@@ -964,39 +945,55 @@ function setupIpc() {
 
   // Real App Launch
   ipcMain.handle('app:launch', async (_, { command, appName, appId }) => {
-    return new Promise((resolve) => {
-      const record = getInstalledRecord();
-      const targetId = appId || (appName ? appName.toLowerCase() : 'relay');
-      const appInfo = record[targetId];
+    const record = getInstalledRecord();
+    const targetId = appId || (appName ? appName.toLowerCase() : 'relay');
+    const appInfo = record[targetId] || {};
 
-      let execPath = appInfo?.executablePath;
-      if (!execPath || !fs.existsSync(execPath)) {
+    let execPath = appInfo.executablePath;
+    // Don't treat an uninstaller or installer as the launchable app executable
+    if (execPath && /unins.*\.exe$|setup.*\.exe$/i.test(path.basename(execPath))) {
+      execPath = null;
+    }
+
+    // Auto-detect the real installed executable from Start Menu, Desktop, and Program directories
+    if (!execPath || !fs.existsSync(execPath)) {
+      const detected = findShortcutTarget(appName || targetId) || findProgramDirectoryExe(appName || targetId);
+      if (detected) {
+        execPath = detected;
+        appInfo.executablePath = detected;
+        saveInstalledRecord(record);
+      }
+    }
+
+    if (!execPath || !fs.existsSync(execPath)) {
+      if (command && fs.existsSync(command) && !/unins.*\.exe$/i.test(path.basename(command))) {
         execPath = command;
       }
+    }
 
-      if (!execPath) {
-        return resolve({ ok: false, error: `No executable found for ${appName || targetId}` });
+    // If still no installed executable found, the user may still need to run/finish the setup wizard
+    if (!execPath || !fs.existsSync(execPath)) {
+      const installer = appInfo.installerPath;
+      if (installer && fs.existsSync(installer)) {
+        await shell.openPath(installer);
+        return {
+          ok: true,
+          message: `Opened ${path.basename(installer)}. Complete setup to finish installing ${appName || targetId}.`,
+        };
       }
+      return {
+        ok: false,
+        error: `Could not find executable for ${appName || targetId}. Run the installer to finish setup.`,
+      };
+    }
 
-      try {
-        if (fs.existsSync(execPath)) {
-          const child = spawn(execPath, [], {
-            detached: true,
-            stdio: 'ignore',
-          });
-          child.unref();
-          resolve({ ok: true, message: `Launched ${appName || targetId}` });
-        } else {
-          const child = exec(execPath, (err) => {
-            if (err) console.error(`Error launching ${appName}:`, err);
-          });
-          child.unref();
-          resolve({ ok: true, message: `Launched ${appName || targetId}` });
-        }
-      } catch (err) {
-        resolve({ ok: false, error: err.message });
-      }
-    });
+    try {
+      const child = spawn(execPath, [], { detached: true, stdio: 'ignore' });
+      child.unref();
+      return { ok: true, message: `Launched ${appName || targetId}` };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
   });
 
   // Real App Uninstall

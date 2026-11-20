@@ -54,9 +54,9 @@ declare global {
       readLocalCatalog: (filePath?: string) => Promise<{ ok: boolean; data?: CatalogManifest; error?: string }>
       saveLocalCatalog: (filePath: string | undefined, data: CatalogManifest) => Promise<{ ok: boolean; error?: string }>
       getInstalledState: () => Promise<{ ok: boolean; installed?: Record<string, { status: string; installedVersion: string; executablePath?: string }> }>
-      installApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; error?: string }>
+      installApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; message?: string; error?: string }>
       launchApp: (command: string, appName: string, appId?: string) => Promise<{ ok: boolean; message?: string; error?: string }>
-      updateApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; error?: string }>
+      updateApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; message?: string; error?: string }>
       uninstallApp: (appId: string) => Promise<{ ok: boolean; message?: string; error?: string }>
       onInstallProgress: (callback: (data: { appId: string; progress: number; statusText: string; action: string }) => void) => () => void
       openExternalUrl: (url: string) => Promise<{ ok: boolean; error?: string }>
@@ -570,7 +570,7 @@ export default function App() {
               : a
           )
           persistAppChange(nextApps)
-          showToast(`${app.name} v${res.version || app.version} installed successfully!`, "success")
+          showToast(res.message || `${app.name} v${res.version || app.version} ready!`, "success")
         } else {
           showToast(res.error || `Failed to install ${app.name}`, "error")
         }
@@ -624,7 +624,7 @@ export default function App() {
               : a
           )
           persistAppChange(nextApps)
-          showToast(`${app.name} updated to v${res.version || app.version}!`, "success")
+          showToast(res.message || `${app.name} updated to v${res.version || app.version}!`, "success")
         } else {
           showToast(res.error || `Failed to update ${app.name}`, "error")
         }
