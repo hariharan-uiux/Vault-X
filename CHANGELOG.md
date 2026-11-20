@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.3.0...vault-x-v1.4.0) (2026-11-20)
+
+
+### Features
+
+* install and auto-update apps directly from GitHub repository links ([69dd9c1](https://github.com/hariharan-uiux/Vault-X/commit/69dd9c13fa0dd4345ec91de34dd962c07fa0f913))
+
 ## [1.3.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.2.1...vault-x-v1.3.0) (2026-11-19)
 
 
