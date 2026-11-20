@@ -690,6 +690,37 @@ async function installWindowsPackage(installerFile, appName, version) {
   };
 }
 
+function removeAppShortcuts(appName) {
+  if (process.platform !== 'win32' || !appName) return;
+  const roots = [
+    process.env.APPDATA && path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    process.env.PROGRAMDATA && path.join(process.env.PROGRAMDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs'),
+    process.env.USERPROFILE && path.join(process.env.USERPROFILE, 'Desktop'),
+    process.env.PUBLIC && path.join(process.env.PUBLIC, 'Desktop'),
+  ].filter(Boolean);
+
+  const wanted = normalizeAppName(appName);
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    try {
+      const walk = (d) => {
+        for (const item of fs.readdirSync(d, { withFileTypes: true })) {
+          const full = path.join(d, item.name);
+          if (item.isDirectory()) {
+            walk(full);
+          } else if (item.isFile() && /\.lnk$/i.test(item.name)) {
+            const base = normalizeAppName(path.basename(item.name, '.lnk'));
+            if (base === wanted || (wanted.length > 2 && (base.includes(wanted) || wanted.includes(base)))) {
+              try { fs.unlinkSync(full); } catch {}
+            }
+          }
+        }
+      };
+      walk(root);
+    } catch {}
+  }
+}
+
 function setupIpc() {
   // Read local catalog file
   ipcMain.handle('catalog:read-local', async (_, filePath) => {
@@ -997,35 +1028,126 @@ function setupIpc() {
   });
 
   // Real App Uninstall
-  ipcMain.handle('app:uninstall', async (_, { appId }) => {
+  ipcMain.handle('app:uninstall', async (_, arg) => {
     try {
-      const targetId = appId || 'relay';
-      const record = getInstalledRecord();
-      const appDir = path.join(getInstalledAppsDir(), targetId);
-      const info = record[targetId] || null;
+      const appId = typeof arg === 'string' ? arg : arg?.appId || 'relay';
+      let appName = typeof arg === 'object' ? arg?.appName : null;
 
-      // Remove the real installed copy first (Program Files / LocalAppData).
-      if (info?.uninstallString) {
-        await runUninstaller(info.uninstallString);
-      } else if (info?.executablePath && fs.existsSync(info.executablePath)) {
-        const exeDir = path.dirname(info.executablePath);
+      if (!appName) {
+        const custom = readCustomApps().find((a) => a.id === appId);
+        if (custom) appName = custom.name;
+        else {
+          try {
+            const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, '../public/apps.json'), 'utf-8'));
+            const found = (catalog.apps || []).find((a) => a.id === appId);
+            if (found) appName = found.name;
+          } catch {}
+        }
+      }
+      if (!appName) appName = appId;
+
+      const record = getInstalledRecord();
+      const appInfo = record[appId] || {};
+      const appDir = path.join(getInstalledAppsDir(), appId);
+
+      let uninstallerExe = null;
+
+      // 1. Check registry uninstall string
+      const uninstallString = appInfo.uninstallString;
+      if (uninstallString) {
+        const match = String(uninstallString).match(/"([^"]+)"|^(\S+\.exe)/i);
+        const parsedExe = match ? match[1] || match[2] : null;
+        if (parsedExe && fs.existsSync(parsedExe)) {
+          uninstallerExe = parsedExe;
+        }
+      }
+
+      // 2. If not found from registry, check the app's install directory
+      let installDir = appInfo.installLocation;
+      if (!installDir && appInfo.executablePath && fs.existsSync(appInfo.executablePath)) {
+        installDir = path.dirname(appInfo.executablePath);
+      }
+      if (!installDir) {
+        const detectedExe = findShortcutTarget(appName) || findProgramDirectoryExe(appName);
+        if (detectedExe) installDir = path.dirname(detectedExe);
+      }
+
+      if (installDir && fs.existsSync(installDir)) {
         try {
-          const uninstaller = fs
-            .readdirSync(exeDir)
-            .find((name) => /^unins.*\.exe$/i.test(name) || /^uninstall.*\.exe$/i.test(name));
-          if (uninstaller) await runUninstaller(`"${path.join(exeDir, uninstaller)}"`);
+          const files = fs.readdirSync(installDir);
+          const found = files.find((f) => /^unins.*\.exe$|^uninstall.*\.exe$/i.test(f));
+          if (found) {
+            uninstallerExe = path.join(installDir, found);
+          }
         } catch {}
       }
 
-      if (fs.existsSync(appDir)) {
-        fs.rmSync(appDir, { recursive: true, force: true });
+      // 3. Check %LOCALAPPDATA%\Programs\<appName>
+      if (!uninstallerExe && process.platform === 'win32' && process.env.LOCALAPPDATA) {
+        const candDir = path.join(process.env.LOCALAPPDATA, 'Programs', appName);
+        if (fs.existsSync(candDir)) {
+          installDir = candDir;
+          try {
+            const files = fs.readdirSync(candDir);
+            const found = files.find((f) => /^unins.*\.exe$|^uninstall.*\.exe$/i.test(f));
+            if (found) {
+              uninstallerExe = path.join(candDir, found);
+            }
+          } catch {}
+        }
       }
 
-      delete record[targetId];
+      // 4. Run the uninstaller if found
+      if (uninstallerExe && fs.existsSync(uninstallerExe)) {
+        try {
+          exec(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${uninstallerExe.replace(/'/g, "''")}'"`);
+        } catch {}
+
+        try {
+          await shell.openPath(uninstallerExe);
+        } catch {
+          const child = spawn(uninstallerExe, [], { detached: true });
+          child.unref();
+        }
+      } else if (installDir && fs.existsSync(installDir)) {
+        // If it was a portable install with no separate uninstaller, clean up directory safely
+        const isSafeDir =
+          (process.env.LOCALAPPDATA &&
+            installDir.toLowerCase().startsWith(path.join(process.env.LOCALAPPDATA, 'Programs').toLowerCase())) ||
+          installDir.toLowerCase().startsWith(path.resolve(getInstalledAppsDir()).toLowerCase());
+        if (isSafeDir) {
+          try {
+            fs.rmSync(installDir, { recursive: true, force: true });
+          } catch (e) {
+            console.warn(`Could not delete install directory ${installDir}:`, e);
+          }
+        }
+      }
+
+      // 5. Remove desktop / Start Menu shortcuts
+      if (process.platform === 'win32') {
+        removeAppShortcuts(appName);
+      }
+
+      // 6. Remove cached downloaded installer package in userData/installed-apps/<appId>
+      if (fs.existsSync(appDir)) {
+        try {
+          fs.rmSync(appDir, { recursive: true, force: true });
+        } catch {}
+      }
+
+      // 7. Update installed record
+      delete record[appId];
       saveInstalledRecord(record);
 
-      return { ok: true, message: `Uninstalled ${targetId}` };
+      return {
+        ok: true,
+        message: uninstallerExe
+          ? `Uninstaller opened for ${appName}. Complete the prompt to finish removal.`
+          : `${appName} uninstalled successfully.`,
+      };
     } catch (err) {
+      console.error('Uninstall error:', err);
       return { ok: false, error: err.message };
     }
   });

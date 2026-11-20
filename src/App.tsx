@@ -57,7 +57,7 @@ declare global {
       installApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; message?: string; error?: string }>
       launchApp: (command: string, appName: string, appId?: string) => Promise<{ ok: boolean; message?: string; error?: string }>
       updateApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; message?: string; error?: string }>
-      uninstallApp: (appId: string) => Promise<{ ok: boolean; message?: string; error?: string }>
+      uninstallApp: (appId: string, appName?: string) => Promise<{ ok: boolean; message?: string; error?: string }>
       onInstallProgress: (callback: (data: { appId: string; progress: number; statusText: string; action: string }) => void) => () => void
       openExternalUrl: (url: string) => Promise<{ ok: boolean; error?: string }>
       getSystemInfo: () => Promise<{ platform: string; arch: string; version: string }>
@@ -667,15 +667,18 @@ export default function App() {
   const handleUninstall = async (app: AppItem) => {
     if (window.electronAPI?.uninstallApp) {
       try {
-        const res = await window.electronAPI.uninstallApp(app.id)
+        const res = await window.electronAPI.uninstallApp(app.id, app.name)
         if (!res.ok) {
           showToast(res.error || `Failed to uninstall ${app.name}`, "error")
           return
         }
+        showToast(res.message || `${app.name} uninstalled`, "info")
       } catch (err: any) {
         showToast(err.message || `Failed to uninstall ${app.name}`, "error")
         return
       }
+    } else {
+      showToast(`${app.name} uninstalled`, "info")
     }
     const nextApps = apps.map((a) =>
       a.id === app.id
@@ -683,7 +686,6 @@ export default function App() {
         : a
     )
     persistAppChange(nextApps)
-    showToast(`${app.name} uninstalled`, "info")
   }
 
   // Add a GitHub repository the user pasted

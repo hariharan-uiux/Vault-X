@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installApp: (appItem) => ipcRenderer.invoke('app:install', appItem),
   launchApp: (command, appName, appId) => ipcRenderer.invoke('app:launch', { command, appName, appId }),
   updateApp: (appItem) => ipcRenderer.invoke('app:update', appItem),
-  uninstallApp: (appId) => ipcRenderer.invoke('app:uninstall', { appId }),
+  uninstallApp: (appId, appName) => ipcRenderer.invoke('app:uninstall', { appId, appName }),
   onInstallProgress: (callback) => {
     const handler = (_, data) => callback(data);
     ipcRenderer.on('app:install-progress', handler);
