@@ -53,7 +53,7 @@ declare global {
     electronAPI?: {
       readLocalCatalog: (filePath?: string) => Promise<{ ok: boolean; data?: CatalogManifest; error?: string }>
       saveLocalCatalog: (filePath: string | undefined, data: CatalogManifest) => Promise<{ ok: boolean; error?: string }>
-      getInstalledState: () => Promise<{ ok: boolean; installed?: Record<string, { status: string; installedVersion: string; executablePath?: string }> }>
+      getInstalledState: (apps?: AppItem[]) => Promise<{ ok: boolean; installed?: Record<string, { status: string; installedVersion: string; executablePath?: string }>; discoveredApps?: AppItem[]; error?: string }>
       installApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; message?: string; error?: string }>
       launchApp: (command: string, appName: string, appId?: string) => Promise<{ ok: boolean; message?: string; error?: string }>
       updateApp: (app: AppItem) => Promise<{ ok: boolean; version?: string; executablePath?: string; message?: string; error?: string }>
@@ -309,13 +309,13 @@ export default function App() {
       loadManifestFromSource("/apps.json", "default")
     }
 
-    // Check true installed apps state from local disk
+    // Check true installed apps state from local disk and recognize already installed apps
     if (window.electronAPI?.getInstalledState) {
       window.electronAPI.getInstalledState().then((res) => {
         if (res.ok && res.installed) {
           installedStateRef.current = res.installed as Record<string, { status: string; installedVersion: string }>
-          setApps((prevApps) =>
-            prevApps.map((a) => {
+          setApps((prevApps) => {
+            let list = prevApps.map((a) => {
               const installed = res.installed?.[a.id]
               if (installed) {
                 return {
@@ -326,7 +326,11 @@ export default function App() {
               }
               return a
             })
-          )
+            if (Array.isArray(res.discoveredApps) && res.discoveredApps.length > 0) {
+              list = mergeCustomApps(list, res.discoveredApps)
+            }
+            return list
+          })
         }
       })
     }

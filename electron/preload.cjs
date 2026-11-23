@@ -3,7 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   readLocalCatalog: (filePath) => ipcRenderer.invoke('catalog:read-local', filePath),
   saveLocalCatalog: (filePath, data) => ipcRenderer.invoke('catalog:save-local', { filePath, data }),
-  getInstalledState: () => ipcRenderer.invoke('catalog:get-installed-state'),
+  getInstalledState: (apps) => ipcRenderer.invoke('catalog:get-installed-state', apps),
   installApp: (appItem) => ipcRenderer.invoke('app:install', appItem),
   launchApp: (command, appName, appId) => ipcRenderer.invoke('app:launch', { command, appName, appId }),
   updateApp: (appItem) => ipcRenderer.invoke('app:update', appItem),

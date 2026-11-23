@@ -420,6 +420,16 @@ function buildAppFromRepo(repoInfo, release) {
     else app.installTargets.linux = target;
   }
 
+  // Check if this application is already installed on the local system
+  try {
+    const existingExe = findShortcutTarget(app.name) || findProgramDirectoryExe(app.name);
+    if (existingExe && fs.existsSync(existingExe)) {
+      app.status = 'installed';
+      app.installedVersion = latestVersion || '1.0.0';
+      app.executablePath = existingExe;
+    }
+  } catch {}
+
   return app;
 }
 
@@ -634,6 +644,50 @@ function findProgramDirectoryExe(appName) {
   return null;
 }
 
+// Discover applications already installed on this machine (e.g. after Vault X is reinstalled)
+function discoverSystemInstalledApps() {
+  if (process.platform !== 'win32' || !process.env.LOCALAPPDATA) return [];
+  const programsDir = path.join(process.env.LOCALAPPDATA, 'Programs');
+  if (!fs.existsSync(programsDir)) return [];
+
+  const discovered = [];
+  try {
+    const entries = fs.readdirSync(programsDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const folderName = entry.name;
+      // Skip vault-x itself
+      if (/vault-?x/i.test(folderName)) continue;
+
+      const fullDirPath = path.join(programsDir, folderName);
+      const exe = exeFromInstallDir(fullDirPath, folderName);
+      if (exe && fs.existsSync(exe)) {
+        const id = `local-${folderName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+        const name = prettyRepoName(folderName);
+        discovered.push({
+          id,
+          name,
+          description: `Installed on this computer (${folderName})`,
+          icon: 'Package',
+          category: 'My Repos',
+          tags: ['Installed on PC', 'Detected'],
+          version: '1.0.0',
+          installedVersion: '1.0.0',
+          status: 'installed',
+          author: 'Local PC',
+          size: '—',
+          executablePath: exe,
+          source: 'custom',
+          installTargets: {},
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Error discovering system apps:', e);
+  }
+  return discovered;
+}
+
 async function installWindowsPackage(installerFile, appName, version) {
   // 1. Unblock file from Windows SmartScreen
   try {
@@ -782,11 +836,14 @@ function setupIpc() {
     }
   });
 
-  // Check true installed state from disk
-  ipcMain.handle('catalog:get-installed-state', async () => {
+  // Check true installed state from disk and scan system for already installed apps
+  ipcMain.handle('catalog:get-installed-state', async (_, appsToCheck = []) => {
     try {
       const record = getInstalledRecord();
       const valid = {};
+      let didUpdateRecord = false;
+
+      // 1. Verify any entries already saved in record
       for (const [id, info] of Object.entries(record)) {
         if (info && info.executablePath && fs.existsSync(info.executablePath)) {
           valid[id] = {
@@ -797,7 +854,88 @@ function setupIpc() {
           };
         }
       }
-      return { ok: true, installed: valid };
+
+      // 2. Aggregate apps to check: custom apps stored on disk + apps passed from UI
+      const customApps = readCustomApps();
+      const allApps = [...customApps];
+      if (Array.isArray(appsToCheck)) {
+        for (const a of appsToCheck) {
+          if (a && a.id && !allApps.some((x) => x.id === a.id)) {
+            allApps.push(a);
+          }
+        }
+      }
+
+      // 3. Scan the system to recognize apps already installed on the machine
+      let registryEntries = null;
+
+      for (const app of allApps) {
+        if (valid[app.id]) continue;
+
+        const name = app.name || app.id;
+        let detected = findShortcutTarget(name);
+        if (!detected) {
+          detected = findProgramDirectoryExe(name);
+        }
+
+        let detectedVersion = null;
+        if (!detected && process.platform === 'win32') {
+          if (!registryEntries) {
+            registryEntries = await listWindowsUninstallEntries();
+          }
+          const match = registryEntries.find((e) => {
+            const n = normalizeAppName(e.DisplayName);
+            const wanted = normalizeAppName(name);
+            return n === wanted || (wanted.length > 2 && (n.includes(wanted) || wanted.includes(n)));
+          });
+          if (match) {
+            detectedVersion = match.DisplayVersion ? versionFromTag(match.DisplayVersion) : null;
+            detected = resolveEntryExecutable(match, name);
+          }
+        }
+
+        if (detected && fs.existsSync(detected)) {
+          const finalVersion = detectedVersion || app.installedVersion || app.version || '1.0.0';
+          valid[app.id] = {
+            status: 'installed',
+            installedVersion: finalVersion,
+            executablePath: detected,
+            installedAt: new Date().toISOString(),
+          };
+          record[app.id] = {
+            ...valid[app.id],
+          };
+          didUpdateRecord = true;
+        }
+      }
+
+      // 4. Auto-discover system apps if custom apps list is empty (e.g. fresh install after uninstaller)
+      const discoveredApps = [];
+      if (customApps.length === 0 && process.platform === 'win32') {
+        const systemDiscovered = discoverSystemInstalledApps();
+        for (const disc of systemDiscovered) {
+          discoveredApps.push(disc);
+          valid[disc.id] = {
+            status: 'installed',
+            installedVersion: disc.installedVersion || '1.0.0',
+            executablePath: disc.executablePath,
+            installedAt: new Date().toISOString(),
+          };
+          record[disc.id] = {
+            ...valid[disc.id],
+          };
+          didUpdateRecord = true;
+        }
+        if (discoveredApps.length > 0) {
+          saveCustomApps(discoveredApps);
+        }
+      }
+
+      if (didUpdateRecord) {
+        saveInstalledRecord(record);
+      }
+
+      return { ok: true, installed: valid, discoveredApps };
     } catch (err) {
       return { ok: false, error: err.message };
     }

@@ -232,24 +232,26 @@ export async function checkAppUpdates(apps: AppItem[]): Promise<{
 
       const latestVersion = parseVersionFromTag(release.tag_name)
       const currentVersion = app.installedVersion || app.version
+      const isInstalled = app.status === "installed" || !!app.installedVersion
 
-      // Check if the GitHub release is newer than our installed/catalog version
-      if (compareSemver(latestVersion, currentVersion) > 0) {
+      // Show update button ONLY IF the app is installed and a newer release exists
+      if (isInstalled && compareSemver(latestVersion, currentVersion) > 0) {
         updatesFound++
         return {
           ...app,
-          status: (app.installedVersion ? "update_available" : app.status) as typeof app.status,
+          status: "update_available" as const,
           version: latestVersion,
           releaseNotes: release.body || app.releaseNotes,
           releaseUrl: release.html_url || app.releaseUrl,
         }
       }
 
-      // If not installed, still keep catalog version updated to latest release
-      if (app.status === "not_installed" && compareSemver(latestVersion, app.version) > 0) {
+      // If the app is NOT installed on the system, keep status as not_installed (shows Install, never Update)
+      if (!isInstalled) {
         return {
           ...app,
-          version: latestVersion,
+          status: "not_installed" as const,
+          version: latestVersion || app.version,
           releaseNotes: release.body || app.releaseNotes,
           releaseUrl: release.html_url || app.releaseUrl,
         }
