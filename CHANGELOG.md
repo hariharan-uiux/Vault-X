@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.6.0...vault-x-v1.7.0) (2026-11-23)
+
+### Features
+
+* **catalog:** remove hardcoded pre-bundled apps so catalog exclusively hosts user-added git repositories ([6800183](https://github.com/hariharan-uiux/Vault-X/commit/6800183ef9f61b0d23cb7a5a8eb8d234a9e5dbf0))
+
+### Bug Fixes
+
+* **installer:** architecture-aware asset matching to prevent downloading arm64 on x64 systems, fixing Windows shortcut 'browse file' errors ([8b953aa](https://github.com/hariharan-uiux/Vault-X/commit/8b953aae2a87c1cb50a5814bc3a1c6a2824df4ce))
+
 ## [1.6.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.5.1...vault-x-v1.6.0) (2026-11-20)
 
 ### Features
