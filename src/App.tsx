@@ -12,7 +12,6 @@ import {
   SlidersHorizontal,
   PackageCheck,
   HardDrive,
-  Cpu,
   Layers,
   Sparkles,
   Play,
@@ -1023,7 +1022,7 @@ export default function App() {
       <main className="w-full flex-1 bg-zinc-950 flex flex-col py-6 sm:py-8 pb-28 sm:pb-32">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex-1 flex flex-col">
           {/* Top Metrics Stat Boxes */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 border-l border-t border-zinc-800 mb-6 bg-zinc-950">
+          <div className="grid grid-cols-1 sm:grid-cols-3 border-l border-t border-zinc-800 mb-6 bg-zinc-950">
             {/* Box 1: Total Apps */}
             <div
               onClick={() => {
@@ -1060,30 +1059,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Box 3: RAM */}
+            {/* Box 3: Platform */}
             <div className="border-r border-b border-zinc-800 p-3 sm:p-3.5 bg-zinc-950 flex items-center space-x-3">
-              <div className="h-8 w-8 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 flex-shrink-0">
-                <Cpu className="h-4 w-4 text-zinc-400" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] text-zinc-500 uppercase font-mono block leading-none mb-1">RAM</span>
-                <span className="text-sm sm:text-base font-bold font-mono text-zinc-100 leading-none">~38 MB</span>
-              </div>
-            </div>
-
-            {/* Box 4: Fast Startup */}
-            <div className="border-r border-b border-zinc-800 p-3 sm:p-3.5 bg-zinc-950 flex items-center space-x-3">
-              <div className="h-8 w-8 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 flex-shrink-0">
-                <Sparkles className="h-4 w-4 text-amber-400" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-[10px] text-zinc-500 uppercase font-mono block leading-none mb-1">Fast Startup</span>
-                <span className="text-sm sm:text-base font-bold font-mono text-zinc-100 leading-none">&lt;120ms</span>
-              </div>
-            </div>
-
-            {/* Box 5: Platform */}
-            <div className="border-r border-b border-zinc-800 p-3 sm:p-3.5 bg-zinc-950 flex items-center space-x-3 col-span-2 sm:col-span-1">
               <div className="h-8 w-8 bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 flex-shrink-0">
                 <HardDrive className="h-4 w-4 text-zinc-400" />
               </div>
