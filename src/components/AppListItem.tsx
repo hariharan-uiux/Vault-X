@@ -93,9 +93,10 @@ export function AppListItem({
                 size="sm"
                 onClick={() => onLaunch(app)}
                 className="bg-zinc-100 text-zinc-950 hover:bg-white text-xs h-8 px-3 font-semibold space-x-1"
+                title="Open app"
               >
                 <Play className="h-3 w-3 fill-current" />
-                <span>Launch</span>
+                <span>Open</span>
               </Button>
             )}
 

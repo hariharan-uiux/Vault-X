@@ -210,7 +210,7 @@ export function AppDetailModal({
                   className="bg-zinc-100 text-zinc-950 hover:bg-white text-xs h-8 font-semibold"
                 >
                   <Play className="h-3 w-3 mr-1.5 fill-current" />
-                  <span>Launch</span>
+                  <span>Open</span>
                 </Button>
               </>
             )}
@@ -227,7 +227,7 @@ export function AppDetailModal({
                   className="text-xs h-8"
                 >
                   <Play className="h-3 w-3 mr-1.5" />
-                  <span>Launch Current</span>
+                  <span>Open Current</span>
                 </Button>
                 <Button
                   size="sm"

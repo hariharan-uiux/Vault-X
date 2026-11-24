@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
-const { spawn, exec } = require('child_process');
+const { spawn, exec, execSync } = require('child_process');
 
 // Optimize memory and CPU footprint
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -382,7 +382,38 @@ function prettyRepoName(name) {
     .join(' ');
 }
 
-function buildAppFromRepo(repoInfo, release) {
+async function getAppInstalledVersion(appName, exePath) {
+  if (process.platform !== 'win32') return null;
+  // 1. Registry DisplayVersion
+  try {
+    const entries = await listWindowsUninstallEntries();
+    const wanted = normalizeAppName(appName);
+    const match = entries.find((e) => {
+      const n = normalizeAppName(e.DisplayName);
+      return n === wanted || (wanted.length > 2 && (n.includes(wanted) || wanted.includes(n)));
+    });
+    if (match && match.DisplayVersion) {
+      const ver = versionFromTag(match.DisplayVersion);
+      if (ver) return ver;
+    }
+  } catch {}
+
+  // 2. File VersionInfo
+  if (exePath && fs.existsSync(exePath)) {
+    try {
+      const out = execSync(
+        `powershell -NoProfile -Command "(Get-Item -LiteralPath '${exePath.replace(/'/g, "''")}').VersionInfo.ProductVersion"`,
+        { timeout: 5000, encoding: 'utf-8' }
+      ).trim();
+      const ver = versionFromTag(out);
+      if (ver) return ver;
+    } catch {}
+  }
+
+  return null;
+}
+
+async function buildAppFromRepo(repoInfo, release) {
   const fullName = repoInfo?.full_name || repoInfo?.repo || '';
   const [owner, repoName] = fullName.split('/');
   const latestVersion = versionFromTag(release?.tag_name || '');
@@ -424,9 +455,17 @@ function buildAppFromRepo(repoInfo, release) {
   try {
     const existingExe = findShortcutTarget(app.name) || findProgramDirectoryExe(app.name);
     if (existingExe && fs.existsSync(existingExe)) {
-      app.status = 'installed';
-      app.installedVersion = latestVersion || '1.0.0';
+      const detectedVer = await getAppInstalledVersion(app.name, existingExe);
+      const installedVer = detectedVer || latestVersion || '1.0.0';
+      app.installedVersion = installedVer;
       app.executablePath = existingExe;
+
+      // If GitHub has a newer release than the local version, show Update! Otherwise show Open (installed)
+      if (latestVersion && compareSemver(latestVersion, installedVer) > 0) {
+        app.status = 'update_available';
+      } else {
+        app.status = 'installed';
+      }
     }
   } catch {}
 
@@ -1313,7 +1352,7 @@ function setupIpc() {
 
     const published = releases.filter((r) => !r.draft);
     const latest = published.find((r) => !r.prerelease) || published[0] || null;
-    const app = buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
+    const app = await buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
 
     return {
       ok: true,
@@ -1353,7 +1392,7 @@ function setupIpc() {
 
       const published = releases.filter((r) => !r.draft);
       const latest = published.find((r) => !r.prerelease) || published[0] || null;
-      app = buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
+      app = await buildAppFromRepo(repoInfo || { full_name: fullName }, latest);
     }
 
     if (!app || !app.id) {
