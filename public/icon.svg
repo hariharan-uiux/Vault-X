@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <!-- Background Squircle Gradient -->
+    <linearGradient id="vx-bg" x1="64" y1="64" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#15151a" />
+      <stop offset="50%" stop-color="#0b0b0e" />
+      <stop offset="100%" stop-color="#060608" />
+    </linearGradient>
+
+    <!-- Outer Rim Border Gradient -->
+    <linearGradient id="vx-rim" x1="64" y1="64" x2="960" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9ea7b5" stop-opacity="0.85" />
+      <stop offset="30%" stop-color="#434852" stop-opacity="0.5" />
+      <stop offset="70%" stop-color="#23262c" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#141418" stop-opacity="0.2" />
+    </linearGradient>
+
+    <!-- Central Cyber-Emerald Glow -->
+    <radialGradient id="vx-glow" cx="512" cy="512" r="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.25" />
+      <stop offset="35%" stop-color="#06b6d4" stop-opacity="0.14" />
+      <stop offset="70%" stop-color="#047857" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#047857" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Under-Arm Gradient (TR to BL) -->
+    <linearGradient id="vx-under-arm" x1="0" y1="-305" x2="0" y2="305" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#d6dae2" />
+      <stop offset="50%" stop-color="#949aa6" />
+      <stop offset="100%" stop-color="#666e7d" />
+    </linearGradient>
+
+    <!-- Over-Arm Light Facet -->
+    <linearGradient id="vx-over-light" x1="0" y1="-305" x2="0" y2="305" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="40%" stop-color="#f1f5f9" />
+      <stop offset="100%" stop-color="#cbd5e1" />
+    </linearGradient>
+
+    <!-- Over-Arm Shade Facet -->
+    <linearGradient id="vx-over-shade" x1="0" y1="-305" x2="0" y2="305" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e2e8f0" />
+      <stop offset="50%" stop-color="#94a3b8" />
+      <stop offset="100%" stop-color="#64748b" />
+    </linearGradient>
+
+    <!-- Center Diamond Core Gradient -->
+    <linearGradient id="vx-core" x1="-48" y1="-48" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#272a32" />
+      <stop offset="100%" stop-color="#121317" />
+    </linearGradient>
+
+    <!-- Luminous Pip Gradient -->
+    <radialGradient id="vx-pip" cx="512" cy="512" r="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6ee7b7" />
+      <stop offset="50%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#047857" />
+    </radialGradient>
+
+    <!-- Arm Clip Path for Bevel Split -->
+    <clipPath id="vx-bar-clip">
+      <rect x="-68" y="-305" width="136" height="610" rx="18" ry="18" />
+    </clipPath>
+  </defs>
+
+  <!-- Ambient Glow -->
+  <circle cx="512" cy="512" r="420" fill="url(#vx-glow)" />
+
+  <!-- Outer Squircle Container -->
+  <rect x="64" y="64" width="896" height="896" rx="216" fill="url(#vx-bg)" stroke="url(#vx-rim)" stroke-width="5" />
+
+  <!-- Vault Dial Track -->
+  <circle cx="512" cy="512" r="335" stroke="#4b5563" stroke-opacity="0.25" stroke-width="2.5" />
+
+  <!-- Cardinal and Sub-Cardinal Dial Notches -->
+  <g stroke="#94a3b8" stroke-linecap="round">
+    <!-- Cardinal Notches -->
+    <line x1="512" y1="168" x2="512" y2="186" stroke-width="3.5" stroke-opacity="0.65" />
+    <line x1="512" y1="838" x2="512" y2="856" stroke-width="3.5" stroke-opacity="0.65" />
+    <line x1="168" y1="512" x2="186" y2="512" stroke-width="3.5" stroke-opacity="0.65" />
+    <line x1="838" y1="512" x2="856" y2="512" stroke-width="3.5" stroke-opacity="0.65" />
+
+    <!-- 45-deg Diagonal Notches -->
+    <line x1="271" y1="271" x2="279" y2="279" stroke-width="2.5" stroke-opacity="0.4" />
+    <line x1="745" y1="271" x2="753" y2="279" stroke-width="2.5" stroke-opacity="0.4" />
+    <line x1="271" y1="745" x2="279" y2="753" stroke-width="2.5" stroke-opacity="0.4" />
+    <line x1="745" y1="745" x2="753" y2="753" stroke-width="2.5" stroke-opacity="0.4" />
+  </g>
+
+  <!-- Under Arm (TR to BL, rotated -45 deg around center) -->
+  <g transform="translate(512, 512) rotate(-45)">
+    <rect x="-68" y="-305" width="136" height="610" rx="18" fill="url(#vx-under-arm)" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2.5" />
+  </g>
+
+  <!-- Over Arm Drop Shadow on Under Arm -->
+  <g transform="translate(512, 512) rotate(45)">
+    <rect x="-82" y="-319" width="164" height="638" rx="28" fill="#000000" fill-opacity="0.25" />
+  </g>
+
+  <!-- Over Arm (TL to BR, rotated +45 deg around center) with Chiseled Facets -->
+  <g transform="translate(512, 512) rotate(45)">
+    <g clip-path="url(#vx-bar-clip)">
+      <!-- Left Facet (Light side) -->
+      <rect x="-68" y="-305" width="68" height="610" fill="url(#vx-over-light)" />
+      <!-- Right Facet (Shade side) -->
+      <rect x="0" y="-305" width="68" height="610" fill="url(#vx-over-shade)" />
+      <!-- Center Specular Ridge -->
+      <line x1="0" y1="-305" x2="0" y2="305" stroke="#ffffff" stroke-opacity="0.8" stroke-width="2" />
+    </g>
+    <!-- Border Specular -->
+    <rect x="-68" y="-305" width="136" height="610" rx="18" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2.5" fill="none" />
+  </g>
+
+  <!-- Center Vault Lock Medallion (Diamond Core) -->
+  <g transform="translate(512, 512)">
+    <!-- Shadow -->
+    <polygon points="0,-54 54,0 0,54 -54,0" fill="#000000" fill-opacity="0.35" />
+    <!-- Diamond Body -->
+    <polygon points="0,-48 48,0 0,48 -48,0" fill="url(#vx-core)" stroke="#34d399" stroke-width="3.5" stroke-opacity="0.8" />
+    <!-- Energetic Emerald Pip -->
+    <circle cx="0" cy="0" r="14" fill="url(#vx-pip)" />
+  </g>
+</svg>

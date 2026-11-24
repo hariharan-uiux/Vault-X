@@ -28,6 +28,7 @@ function createWindow() {
     minHeight: 560,
     backgroundColor: '#09090b',
     title: 'Vault X',
+    icon: path.join(__dirname, '../build/icon.png'),
     titleBarStyle: 'hiddenInset',
     autoHideMenuBar: true,
     webPreferences: {

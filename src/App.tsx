@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react"
+import { VaultXLogo } from "@/components/VaultXLogo"
 import {
-  Rocket,
   Search,
   LayoutGrid,
   List,
@@ -823,8 +823,8 @@ export default function App() {
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-3">
           {/* Brand */}
           <div className="flex items-center space-x-2.5 flex-shrink-0">
-            <div className="h-8 w-8 bg-zinc-100 text-zinc-950 flex items-center justify-center font-bold shadow">
-              <Rocket className="h-4 w-4" />
+            <div className="h-8 w-8 flex items-center justify-center shadow-sm">
+              <VaultXLogo className="h-8 w-8" />
             </div>
             <span className="font-bold text-sm tracking-tight text-zinc-100">Vault X</span>
             <button
