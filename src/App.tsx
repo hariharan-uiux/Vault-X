@@ -38,6 +38,7 @@ import { ManifestModal } from "@/components/ManifestModal"
 import { AddRepoModal } from "@/components/AddRepoModal"
 import { AppDetailModal } from "@/components/AppDetailModal"
 import { SettingsModal } from "@/components/SettingsModal"
+import { WhatsNewModal } from "@/components/WhatsNewModal"
 import { AppItem, CatalogManifest, ViewMode, StatusFilter, AppStatus } from "@/types/catalog"
 import { LauncherSettings, DEFAULT_LAUNCHER_SETTINGS } from "@/types/settings"
 import { checkAppUpdates, checkVaultXUpdate, VaultXUpdateInfo } from "@/lib/githubUpdates"
@@ -172,6 +173,7 @@ export default function App() {
   const [launcherUpdateProgress, setLauncherUpdateProgress] = useState<{ progress: number; statusText: string } | null>(null)
   const [launcherUpdateDismissed, setLauncherUpdateDismissed] = useState(false)
   const [showChangelogModal, setShowChangelogModal] = useState(false)
+  const [whatsNewModalOpen, setWhatsNewModalOpen] = useState(false)
   const [addRepoModalOpen, setAddRepoModalOpen] = useState(false)
   const installedStateRef = useRef<Record<string, { status: string; installedVersion: string }>>({})
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -825,6 +827,14 @@ export default function App() {
               <Rocket className="h-4 w-4" />
             </div>
             <span className="font-bold text-sm tracking-tight text-zinc-100">Vault X</span>
+            <button
+              onClick={() => setWhatsNewModalOpen(true)}
+              className="hidden sm:flex items-center space-x-1.5 px-2 py-0.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-zinc-100 text-[10px] font-mono transition-colors"
+              title="What's New in Vault X"
+            >
+              <Sparkles className="h-3 w-3 text-amber-400" />
+              <span>What's New</span>
+            </button>
             {launcherUpdate?.hasUpdate && (
               <button
                 onClick={() => setLauncherUpdateDismissed(false)}
@@ -929,6 +939,18 @@ export default function App() {
               <FolderOpen className="h-4 w-4" />
             </Button>
 
+            {/* What's New Button */}
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => setWhatsNewModalOpen(true)}
+              className="border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:text-zinc-100"
+              title="What's New — Version History"
+              aria-label="What's New"
+            >
+              <Sparkles className="h-4 w-4 text-amber-400" />
+            </Button>
+
             {/* Settings Button */}
             <Button
               variant="outline"
@@ -990,7 +1012,7 @@ export default function App() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setShowChangelogModal(true)}
+                      onClick={() => setWhatsNewModalOpen(true)}
                       className="text-xs h-8 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800/60 px-2.5 font-mono"
                     >
                       Changelog
@@ -1341,6 +1363,16 @@ export default function App() {
         launcherUpdateProgress={launcherUpdateProgress}
         onCheckAppUpdates={handleCheckAllUpdates}
         onCheckLauncherUpdates={checkVaultX}
+      />
+
+      {/* What's New Modal */}
+      <WhatsNewModal
+        open={whatsNewModalOpen}
+        onOpenChange={setWhatsNewModalOpen}
+        currentVersion={currentAppVersion}
+        hasUpdate={launcherUpdate?.hasUpdate}
+        latestVersion={launcherUpdate?.latestVersion}
+        onApplyLauncherUpdate={handleApplyLauncherUpdate}
       />
 
       {/* Changelog Modal */}
