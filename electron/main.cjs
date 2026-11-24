@@ -403,7 +403,7 @@ async function getAppInstalledVersion(appName, exePath) {
     try {
       const out = execSync(
         `powershell -NoProfile -Command "(Get-Item -LiteralPath '${exePath.replace(/'/g, "''")}').VersionInfo.ProductVersion"`,
-        { timeout: 5000, encoding: 'utf-8' }
+        { timeout: 5000, encoding: 'utf-8', windowsHide: true }
       ).trim();
       const ver = versionFromTag(out);
       if (ver) return ver;
@@ -733,7 +733,7 @@ async function installWindowsPackage(installerFile, appName, version) {
     await new Promise((res) => {
       exec(
         `powershell -NoProfile -Command "Unblock-File -LiteralPath '${installerFile.replace(/'/g, "''")}'"`,
-        { timeout: 10000 },
+        { timeout: 10000, windowsHide: true },
         () => res()
       );
     });
@@ -1062,7 +1062,7 @@ function setupIpc() {
           await new Promise((res) => {
             exec(
               `powershell -NoProfile -Command "Unblock-File -LiteralPath '${destFile.replace(/'/g, "''")}'"`,
-              { timeout: 10000 },
+              { timeout: 10000, windowsHide: true },
               () => res()
             );
           });
@@ -1073,7 +1073,7 @@ function setupIpc() {
           sendProgress(95, `Opening ${appItem.name} setup wizard on your screen...`);
           try {
             if (/\.msi$/i.test(destFile)) {
-              exec(`msiexec.exe /i "${destFile}"`);
+              exec(`msiexec.exe /i "${destFile}"`, { windowsHide: true });
             } else {
               await shell.openPath(destFile);
             }
@@ -1274,7 +1274,10 @@ function setupIpc() {
       // 4. Run the uninstaller if found
       if (uninstallerExe && fs.existsSync(uninstallerExe)) {
         try {
-          exec(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${uninstallerExe.replace(/'/g, "''")}'"`);
+          exec(
+            `powershell -NoProfile -Command "Unblock-File -LiteralPath '${uninstallerExe.replace(/'/g, "''")}'"`,
+            { windowsHide: true }
+          );
         } catch {}
 
         try {
@@ -1628,7 +1631,10 @@ function setupIpc() {
 
           // Unblock the downloaded installer to prevent Windows SmartScreen from aborting it
           try {
-            exec(`powershell -NoProfile -Command "Unblock-File -LiteralPath '${destFile.replace(/'/g, "''")}'"`);
+            exec(
+              `powershell -NoProfile -Command "Unblock-File -LiteralPath '${destFile.replace(/'/g, "''")}'"`,
+              { windowsHide: true }
+            );
           } catch {}
 
           // Create an update script that terminates running Vault X processes (releasing file locks),
@@ -1656,11 +1662,21 @@ function setupIpc() {
 
           fs.writeFileSync(scriptFile, script, 'utf-8');
 
-          const launcher = spawn('cmd.exe', ['/c', scriptFile], {
+          // Launch the updater script silently via wscript.exe so no black CMD console windows pop up
+          const vbsFile = path.join(cacheDir, 'run-hidden.vbs');
+          const escapedScript = scriptFile.replace(/\\/g, '\\\\');
+          const vbsContent = `CreateObject("WScript.Shell").Run "cmd.exe /c """ & "${escapedScript}" & """", 0, False\r\n`;
+          fs.writeFileSync(vbsFile, vbsContent, 'utf-8');
+
+          const launcher = spawn('wscript.exe', ['//B', '//Nologo', vbsFile], {
             detached: true,
             stdio: 'ignore',
+            windowsHide: true,
           });
-          launcher.on('error', (e) => console.error('Failed to start the installer:', e));
+          launcher.on('error', () => {
+            // Fallback to direct cmd.exe with windowsHide if wscript is unavailable
+            spawn('cmd.exe', ['/c', scriptFile], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+          });
           launcher.unref();
 
           sendProgress(100, 'Installing the update. Vault X will reopen automatically...');
