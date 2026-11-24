@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react"
 import { Sparkles, ExternalLink, Calendar, Check, Download, Tag, ArrowRight } from "lucide-react"
+import { VaultXLogo } from "@/components/VaultXLogo"
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,25 @@ export interface VersionRelease {
 
 // Built-in version history from CHANGELOG
 const BUNDLED_RELEASES: VersionRelease[] = [
+  {
+    version: "1.9.0",
+    tag: "vault-x-v1.9.0",
+    name: "Vault X v1.9.0",
+    date: "2026-11-24",
+    highlights: [
+      "Official Brand Identity: High-resolution dark obsidian squircle icon with dimensional beveled 'X' and emerald core.",
+      "Windows App Icon: Native multi-resolution ICO (16×16 to 256×256) for installer, taskbar, and desktop shortcuts.",
+      "Silent Updater Execution: Completely hides background CMD console windows during self-updates (only the installer window appears).",
+      "Refined Brand UI: Integrated vector Vault X logo mark across header, settings, and release modals.",
+    ],
+    notes: `### Features
+• **brand:** official Vault X obsidian vault brand mark, multi-resolution Windows ICO, and vector logo components ([1d0605c](https://github.com/hariharan-uiux/Vault-X/commit/1d0605c0df8b67034715986823b65dce487921c8))
+
+### Bug Fixes
+• **updater:** hide background CMD console popups during self-updates via wscript SW_HIDE ([aa5cc91](https://github.com/hariharan-uiux/Vault-X/commit/aa5cc91f9b7c8fb263df363ea2fe1a8bb6746816))
+• **settings:** bind dynamic client version in diagnostics info`,
+    htmlUrl: "https://github.com/hariharan-uiux/Vault-X/releases/tag/vault-x-v1.9.0",
+  },
   {
     version: "1.8.0",
     tag: "vault-x-v1.8.0",
@@ -263,10 +283,8 @@ export function WhatsNewModal({
         <div className="p-6 border-b border-zinc-800 bg-zinc-900/40">
           <DialogHeader>
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center space-x-2.5">
-                <div className="h-8 w-8 bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                  <Sparkles className="h-4 w-4" />
-                </div>
+              <div className="flex items-center space-x-3">
+                <VaultXLogo className="h-9 w-9 flex-shrink-0" />
                 <div>
                   <DialogTitle className="text-base font-bold text-zinc-100">What's New in Vault X</DialogTitle>
                   <DialogDescription className="text-xs text-zinc-400 mt-0.5">

@@ -14,7 +14,9 @@ import {
   Trash2,
   ArrowUpCircle,
   ShieldCheck,
+  Download,
 } from "lucide-react"
+import { VaultXLogo } from "@/components/VaultXLogo"
 import {
   Dialog,
   DialogContent,
@@ -28,7 +30,6 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { LauncherSettings } from "@/types/settings"
 import { VaultXUpdateInfo } from "@/lib/githubUpdates"
-import { Download } from "lucide-react"
 
 interface SettingsModalProps {
   open: boolean
@@ -53,7 +54,7 @@ export function SettingsModal({
   onUpdateSettings,
   onResetCatalogOverrides,
   systemPlatform,
-  currentVersion = "1.1.1",
+  currentVersion = "1.9.0",
   launcherUpdate,
   onApplyLauncherUpdate,
   isUpdatingLauncher,
@@ -218,7 +219,7 @@ export function SettingsModal({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <RefreshCw className="h-4 w-4 text-zinc-400" />
+                <VaultXLogo className="h-4 w-4" />
                 <h4 className="text-xs font-bold text-zinc-200 uppercase font-mono tracking-wider">
                   Launcher Client Updates
                 </h4>
@@ -433,7 +434,7 @@ export function SettingsModal({
             </div>
             <div className="border-r border-b border-zinc-800 p-2.5">
               <span className="text-zinc-500 block text-[10px] uppercase">Client Version</span>
-              <span className="text-zinc-200 font-bold">v1.0.0-prod</span>
+              <span className="text-zinc-200 font-bold">v{currentVersion}</span>
             </div>
           </div>
         </div>

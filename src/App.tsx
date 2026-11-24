@@ -166,7 +166,7 @@ export default function App() {
   const [launcherSettings, setLauncherSettings] = useState<LauncherSettings>(DEFAULT_LAUNCHER_SETTINGS)
   const [selectedApp, setSelectedApp] = useState<AppItem | null>(null)
   const [systemPlatform, setSystemPlatform] = useState<string>("linux")
-  const [currentAppVersion, setCurrentAppVersion] = useState("1.1.1")
+  const [currentAppVersion, setCurrentAppVersion] = useState("1.9.0")
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
   const [launcherUpdate, setLauncherUpdate] = useState<VaultXUpdateInfo | null>(null)
   const [isUpdatingLauncher, setIsUpdatingLauncher] = useState(false)

@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.9.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.8.0...vault-x-v1.9.0) (2026-11-24)
+
+### Features
+
+* **brand:** official Vault X obsidian vault brand mark, multi-resolution Windows ICO, and vector logo components ([1d0605c](https://github.com/hariharan-uiux/Vault-X/commit/1d0605c0df8b67034715986823b65dce487921c8))
+
+### Bug Fixes
+
+* **updater:** hide background CMD console windows during updates ([aa5cc91](https://github.com/hariharan-uiux/Vault-X/commit/aa5cc91f9b7c8fb263df363ea2fe1a8bb6746816))
+* **settings:** bind dynamic client version in diagnostics info
+
 ## [1.8.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.7.0...vault-x-v1.8.0) (2026-11-24)
 
 ### Features
