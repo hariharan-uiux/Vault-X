@@ -25,6 +25,26 @@ export interface VersionRelease {
 // Built-in version history from CHANGELOG
 const BUNDLED_RELEASES: VersionRelease[] = [
   {
+    version: "1.8.0",
+    tag: "vault-x-v1.8.0",
+    name: "Vault X v1.8.0",
+    date: "2026-11-24",
+    highlights: [
+      "What's New Modal: Built-in release explorer with complete version history, feature highlights, and direct GitHub links.",
+      "Local App Recognition: Automatically discovers previously installed apps on system across Start Menu, AppData, and registry.",
+      "Streamlined App Actions: Shows 'Open' for installed apps, and amber 'Update' only when newer GitHub releases are found.",
+      "Cleaner Dashboard: Simplified top metrics bar focusing on Total Apps, Installed count, and Platform.",
+    ],
+    notes: `### Features
+• **ui:** add What's New modal with full version history and release notes
+• **detection:** recognize previously installed apps on reinstall and restrict Update to installed apps
+• **detection:** resolve real installed version on repo add and switch card action to Open/Update
+
+### Style
+• **dashboard:** remove RAM and Fast Startup metric cards from top bar`,
+    htmlUrl: "https://github.com/hariharan-uiux/Vault-X/releases/tag/vault-x-v1.8.0",
+  },
+  {
     version: "1.7.0",
     tag: "vault-x-v1.7.0",
     name: "Vault X v1.7.0",

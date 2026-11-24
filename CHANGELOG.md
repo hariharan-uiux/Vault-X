@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.7.0...vault-x-v1.8.0) (2026-11-24)
+
+### Features
+
+* **ui:** add What's New modal with full version history and release notes ([cc948a8](https://github.com/hariharan-uiux/Vault-X/commit/cc948a845174e38355d0cd89a88eb322915852cc))
+* **detection:** recognize previously installed apps on reinstall and restrict Update to installed apps ([f71e16d](https://github.com/hariharan-uiux/Vault-X/commit/f71e16d9e6f3488b59a67b077ebf948f3e89f043))
+* **detection:** resolve real installed version on repo add and switch card action to Open/Update ([1b2360f](https://github.com/hariharan-uiux/Vault-X/commit/1b2360fbc13c5752182527bf0dd64cd671301d3d))
+
+### Style
+
+* **dashboard:** remove RAM and Fast Startup metric cards from top bar ([70b7e5b](https://github.com/hariharan-uiux/Vault-X/commit/70b7e5b408f881bf33fd8682f8a729853f31db2f))
+
 ## [1.7.0](https://github.com/hariharan-uiux/Vault-X/compare/vault-x-v1.6.0...vault-x-v1.7.0) (2026-11-23)
 
 ### Features
