@@ -41,7 +41,7 @@ import { SettingsModal } from "@/components/SettingsModal"
 import { WhatsNewModal } from "@/components/WhatsNewModal"
 import { AppItem, CatalogManifest, ViewMode, StatusFilter, AppStatus } from "@/types/catalog"
 import { LauncherSettings, DEFAULT_LAUNCHER_SETTINGS } from "@/types/settings"
-import { checkAppUpdates, checkVaultXUpdate, VaultXUpdateInfo } from "@/lib/githubUpdates"
+import { checkAppUpdates, checkVaultXUpdate, VaultXUpdateInfo, compareSemver } from "@/lib/githubUpdates"
 
 const LOCAL_STORAGE_KEY = "app_launcher_custom_catalog"
 const MANIFEST_SOURCE_KEY = "app_launcher_manifest_source"
@@ -319,10 +319,12 @@ export default function App() {
             let list = prevApps.map((a) => {
               const installed = res.installed?.[a.id]
               if (installed) {
+                const installedVer = installed.installedVersion || a.installedVersion || a.version
+                const isUpdate = a.version && installedVer && compareSemver(a.version, installedVer) > 0
                 return {
                   ...a,
-                  status: (installed.status || "installed") as AppStatus,
-                  installedVersion: installed.installedVersion || a.version,
+                  status: (isUpdate ? "update_available" : (installed.status || "installed")) as AppStatus,
+                  installedVersion: installedVer,
                 }
               }
               return a
@@ -384,6 +386,10 @@ export default function App() {
   // Initial update check on mount
   useEffect(() => {
     checkVaultX()
+    const timer = setTimeout(() => {
+      handleCheckAllUpdates()
+    }, 2000)
+    return () => clearTimeout(timer)
   }, [currentAppVersion])
 
   // Periodic update check when autoUpdate is enabled
@@ -392,6 +398,7 @@ export default function App() {
     const intervalMs = launcherSettings.updateFrequency === "daily" ? 24 * 60 * 60 * 1000 : 5 * 60 * 1000
     const timer = setInterval(() => {
       checkVaultX()
+      handleCheckAllUpdates()
     }, intervalMs)
     return () => clearInterval(timer)
   }, [launcherSettings.autoUpdate, launcherSettings.updateFrequency, currentAppVersion])
@@ -736,7 +743,13 @@ export default function App() {
       localStorage.setItem(ADDED_REPOS_KEY, JSON.stringify(updated))
     } catch {}
 
-    showToast(`${app.name} added to catalog! Click Install to get v${app.version}.`, "success")
+    const actionText =
+      app.status === "installed"
+        ? "Click Open to launch."
+        : app.status === "update_available"
+        ? `Update v${app.version} available.`
+        : `Click Install to get v${app.version}.`
+    showToast(`${app.name} added to catalog! ${actionText}`, "success")
   }
 
   const handleRemoveRepo = async (appId: string) => {

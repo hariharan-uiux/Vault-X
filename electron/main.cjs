@@ -269,6 +269,25 @@ function versionFromTag(tag) {
   return String(tag).replace(/^[vV]/, '').trim();
 }
 
+// Semver comparison helper: returns 1 if a > b, -1 if a < b, 0 if equal
+function compareSemver(a, b) {
+  if (!a && !b) return 0;
+  if (!a) return -1;
+  if (!b) return 1;
+  const cleanA = String(a).replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
+  const cleanB = String(b).replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
+  const partsA = cleanA.split(/[-+]/)[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const partsB = cleanB.split(/[-+]/)[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(partsA.length, partsB.length, 3);
+  for (let i = 0; i < len; i++) {
+    const numA = partsA[i] ?? 0;
+    const numB = partsB[i] ?? 0;
+    if (numA > numB) return 1;
+    if (numA < numB) return -1;
+  }
+  return 0;
+}
+
 function githubJson(url) {
   return new Promise((resolve) => {
     const req = https.get(
@@ -886,12 +905,21 @@ function setupIpc() {
       // 1. Verify any entries already saved in record
       for (const [id, info] of Object.entries(record)) {
         if (info && info.executablePath && fs.existsSync(info.executablePath)) {
+          let verifiedVer = info.installedVersion || '1.0.0';
+          if (process.platform === 'win32') {
+            const detected = await getAppInstalledVersion(id, info.executablePath);
+            if (detected) verifiedVer = detected;
+          }
           valid[id] = {
             status: 'installed',
-            installedVersion: info.installedVersion || '1.0.0',
+            installedVersion: verifiedVer,
             executablePath: info.executablePath,
             installedAt: info.installedAt,
           };
+          if (verifiedVer !== info.installedVersion) {
+            record[id].installedVersion = verifiedVer;
+            didUpdateRecord = true;
+          }
         }
       }
 
@@ -1070,7 +1098,76 @@ function setupIpc() {
         } catch {}
 
         const isInstaller = /setup|install|\.msi$/i.test(targetAsset.name);
-        if (isInstaller) {
+        if (isInstaller || /\.exe$/i.test(targetAsset.name)) {
+          if (actionName === 'updating') {
+            sendProgress(88, `Closing running instances of ${appItem.name}...`);
+            try {
+              const runningExe = (previous && previous.executablePath)
+                ? path.basename(previous.executablePath)
+                : (findShortcutTarget(appItem.name) || findProgramDirectoryExe(appItem.name));
+              if (runningExe) {
+                const exeName = path.basename(runningExe);
+                execSync(`taskkill /F /IM "${exeName}"`, { windowsHide: true, stdio: 'ignore' });
+              }
+            } catch {}
+
+            sendProgress(92, `Applying ${appItem.name} v${targetVersion} update...`);
+            let updateExitCode = -1;
+
+            if (/\.msi$/i.test(destFile)) {
+              updateExitCode = await runProcess('msiexec.exe', ['/i', destFile, '/qn', '/norestart'], 5 * 60 * 1000, true);
+            } else {
+              // Try NSIS silent update flag first (/S)
+              updateExitCode = await runProcess(destFile, ['/S'], 60 * 1000, true);
+              if (updateExitCode !== 0) {
+                // Try InnoSetup silent flags
+                updateExitCode = await runProcess(
+                  destFile,
+                  ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'],
+                  60 * 1000,
+                  true
+                );
+              }
+              if (updateExitCode !== 0) {
+                // Open setup wizard on screen and wait for user to finish
+                sendProgress(95, `Opening ${appItem.name} setup wizard on your screen to complete update...`);
+                updateExitCode = await runProcess(destFile, [], 10 * 60 * 1000, false);
+              }
+            }
+
+            // Allow Windows time to complete writing shortcuts / registry
+            await new Promise((r) => setTimeout(r, 2000));
+
+            const detected = findShortcutTarget(appItem.name) || findProgramDirectoryExe(appItem.name);
+            const verifiedVer = detected ? await getAppInstalledVersion(appItem.name, detected) : null;
+
+            if (updateExitCode === 0 || (verifiedVer && compareSemver(verifiedVer, targetVersion) >= 0)) {
+              sendProgress(100, `${appItem.name} successfully updated to v${verifiedVer || targetVersion}!`);
+              const record = getInstalledRecord();
+              record[appId] = {
+                status: 'installed',
+                installedVersion: verifiedVer || targetVersion,
+                installerPath: destFile,
+                executablePath: detected || (previous && previous.executablePath) || null,
+                installedAt: new Date().toISOString(),
+              };
+              saveInstalledRecord(record);
+
+              return {
+                ok: true,
+                version: verifiedVer || targetVersion,
+                executablePath: detected || (previous && previous.executablePath) || null,
+                message: `${appItem.name} updated to v${verifiedVer || targetVersion}!`,
+              };
+            } else {
+              return {
+                ok: false,
+                error: `Update for ${appItem.name} was not completed.`,
+              };
+            }
+          }
+
+          // Fresh installation flow
           sendProgress(95, `Opening ${appItem.name} setup wizard on your screen...`);
           try {
             if (/\.msi$/i.test(destFile)) {
@@ -1086,11 +1183,12 @@ function setupIpc() {
 
           // Look for any existing or immediately created shortcut / program directory
           const detected = findShortcutTarget(appItem.name) || findProgramDirectoryExe(appItem.name);
+          const detectedVer = detected ? await getAppInstalledVersion(appItem.name, detected) : null;
 
           const record = getInstalledRecord();
           record[appId] = {
             status: 'installed',
-            installedVersion: targetVersion,
+            installedVersion: detectedVer || targetVersion,
             installerPath: destFile,
             executablePath: detected || null,
             installedAt: new Date().toISOString(),
@@ -1099,7 +1197,7 @@ function setupIpc() {
 
           return {
             ok: true,
-            version: targetVersion,
+            version: detectedVer || targetVersion,
             executablePath: detected || null,
             message: `Setup wizard opened! Complete installation on your screen.`,
           };
@@ -1457,25 +1555,6 @@ function setupIpc() {
     }
     return { ok: true, settings: userSettings };
   });
-
-  // Semver comparison helper
-  function compareSemver(a, b) {
-    if (!a && !b) return 0;
-    if (!a) return -1;
-    if (!b) return 1;
-    const cleanA = a.replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
-    const cleanB = b.replace(/^vault-x-v/i, '').replace(/^[vV]/, '').trim();
-    const partsA = cleanA.split(/[-+]/)[0].split('.').map((n) => parseInt(n, 10) || 0);
-    const partsB = cleanB.split(/[-+]/)[0].split('.').map((n) => parseInt(n, 10) || 0);
-    const len = Math.max(partsA.length, partsB.length, 3);
-    for (let i = 0; i < len; i++) {
-      const numA = partsA[i] ?? 0;
-      const numB = partsB[i] ?? 0;
-      if (numA > numB) return 1;
-      if (numA < numB) return -1;
-    }
-    return 0;
-  }
 
   // Launcher updater check
   ipcMain.handle('updater:check', async () => {
